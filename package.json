@@ -1,0 +1,26 @@
+{
+  "name": "agentmesh-hub",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AgentMesh Hub — Central server for cross-machine, cross-model Agent communication",
+  "scripts": {
+    "build": "pnpm -r run build",
+    "dev": "pnpm --filter @agentmesh/hub dev",
+    "start": "pnpm --filter @agentmesh/hub start",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint packages/*/src/**/*.ts",
+    "typecheck": "tsc -b"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "tsx": "^4.0.0",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.2"
+  }
+}

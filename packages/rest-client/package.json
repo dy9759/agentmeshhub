@@ -1,0 +1,25 @@
+{
+  "name": "@agentmesh/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "agentmesh": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@agentmesh/shared": "workspace:*",
+    "@agentmesh/hub": "workspace:*",
+    "commander": "^13.0.0"
+  }
+}
