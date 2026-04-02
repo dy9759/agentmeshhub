@@ -2,10 +2,19 @@ import type { FastifyInstance } from "fastify";
 import {
   CreateSessionRequestSchema,
   SessionStatusSchema,
+  type SessionContext,
 } from "@agentmesh/shared";
 import type { SessionService } from "../services/session.service.js";
 import type { MessageBusService } from "../services/message-bus.service.js";
 import { getAuth } from "../auth/middleware.js";
+import type { AuthContext } from "../auth/types.js";
+
+function canAccessSession(auth: AuthContext, session: any): boolean {
+  if (auth.agentId === session.creatorId) return true;
+  if (auth.ownerId === session.creatorId) return true;
+  const participants = session.participants ?? [];
+  return participants.some((p: any) => p.id === auth.agentId || p.id === auth.ownerId);
+}
 
 export function sessionRoutes(
   app: FastifyInstance,
@@ -24,10 +33,15 @@ export function sessionRoutes(
 
   // Get session by ID
   app.get("/api/sessions/:id", async (request, reply) => {
+    const auth = getAuth(request);
     const { id } = request.params as { id: string };
     const session = await sessionService.findById(id);
     if (!session) {
       reply.code(404).send({ error: "Session not found" });
+      return;
+    }
+    if (!canAccessSession(auth, session)) {
+      reply.code(403).send({ error: "Forbidden" });
       return;
     }
     return session;
@@ -35,12 +49,17 @@ export function sessionRoutes(
 
   // Update session (status or context)
   app.patch("/api/sessions/:id", async (request, reply) => {
+    const auth = getAuth(request);
     const { id } = request.params as { id: string };
-    const body = request.body as { status?: string; context?: unknown };
+    const body = request.body as { status?: string; context?: SessionContext };
 
     let session = await sessionService.findById(id);
     if (!session) {
       reply.code(404).send({ error: "Session not found" });
+      return;
+    }
+    if (!canAccessSession(auth, session)) {
+      reply.code(403).send({ error: "Forbidden" });
       return;
     }
 
@@ -49,7 +68,7 @@ export function sessionRoutes(
       session = await sessionService.updateStatus(id, status);
     }
     if (body.context) {
-      session = await sessionService.updateContext(id, body.context as any);
+      session = await sessionService.updateContext(id, body.context as SessionContext);
     }
 
     return session;
@@ -57,12 +76,17 @@ export function sessionRoutes(
 
   // Get session messages
   app.get("/api/sessions/:id/messages", async (request, reply) => {
+    const auth = getAuth(request);
     const { id } = request.params as { id: string };
     const query = request.query as Record<string, string>;
 
     const session = await sessionService.findById(id);
     if (!session) {
       reply.code(404).send({ error: "Session not found" });
+      return;
+    }
+    if (!canAccessSession(auth, session)) {
+      reply.code(403).send({ error: "Forbidden" });
       return;
     }
 
@@ -86,11 +110,15 @@ export function sessionRoutes(
 
   // List sessions
   app.get("/api/sessions", async (request) => {
+    const auth = getAuth(request);
     const query = request.query as Record<string, string>;
+    const callerId = auth.agentId ?? auth.ownerId!;
     const list = await sessionService.list({
       status: query.status,
-      creatorId: query.creatorId,
+      creatorId: query.creatorId ?? callerId,
     });
-    return { sessions: list };
+    // Filter to sessions the caller can access
+    const filtered = list.filter((s) => canAccessSession(auth, s));
+    return { sessions: filtered };
   });
 }

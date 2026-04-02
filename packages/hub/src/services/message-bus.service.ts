@@ -143,8 +143,13 @@ export class MessageBusService implements MessageBus {
     if (request.target.sessionId && this.sessionService) {
       try {
         await this.sessionService.incrementTurn(request.target.sessionId);
-      } catch {
-        // Session may already be completed — don't fail the send
+      } catch (err) {
+        // Session may already be completed (404) — don't fail the send
+        if (err instanceof AppError && err.statusCode === 404) {
+          // expected — session not found or already completed
+        } else {
+          throw err;
+        }
       }
     }
 
@@ -363,6 +368,7 @@ export class MessageBusService implements MessageBus {
         ),
       )
       .orderBy(desc(interactions.createdAt))
+      .limit(500)
       .all();
 
     const convMap = new Map<string, Interaction>();
@@ -411,6 +417,7 @@ export class MessageBusService implements MessageBus {
         ),
       )
       .orderBy(desc(interactions.createdAt))
+      .limit(500)
       .all();
 
     const convMap = new Map<string, { interaction: Interaction; peerType: "agent" | "owner" }>();

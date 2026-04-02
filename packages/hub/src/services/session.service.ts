@@ -13,6 +13,11 @@ import {
 import type { DB } from "../db/connection.js";
 import { sessions, interactions } from "../db/schema.js";
 
+function safeJsonParse<T>(str: string | null, fallback: T): T {
+  if (!str) return fallback;
+  try { return JSON.parse(str) as T; } catch { return fallback; }
+}
+
 function rowToSession(row: typeof sessions.$inferSelect): Session {
   return {
     id: row.id,
@@ -20,10 +25,10 @@ function rowToSession(row: typeof sessions.$inferSelect): Session {
     creatorId: row.creatorId,
     creatorType: row.creatorType as "agent" | "owner",
     status: row.status as SessionStatus,
-    participants: JSON.parse(row.participants) as SessionParticipant[],
+    participants: safeJsonParse<SessionParticipant[]>(row.participants, []),
     maxTurns: row.maxTurns,
     currentTurn: row.currentTurn,
-    context: row.context ? (JSON.parse(row.context) as SessionContext) : undefined,
+    context: safeJsonParse<SessionContext | undefined>(row.context, undefined),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -46,8 +51,8 @@ function rowToInteraction(row: typeof interactions.$inferSelect): Interaction {
       capability: row.capability ?? undefined,
       sessionId: row.sessionId ?? undefined,
     },
-    payload: JSON.parse(row.payload),
-    metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+    payload: safeJsonParse(row.payload, {}),
+    metadata: safeJsonParse(row.metadata, undefined),
     status: row.status as Interaction["status"],
     createdAt: row.createdAt,
   };
@@ -118,20 +123,27 @@ export class SessionService {
   }
 
   async incrementTurn(sessionId: string): Promise<Session> {
-    const session = await this.findById(sessionId);
-    if (!session) throw new AppError("Session not found", 404);
-
-    const newTurn = session.currentTurn + 1;
     const now = new Date().toISOString();
-    const newStatus: SessionStatus = newTurn >= session.maxTurns ? "completed" : session.status;
 
     this.db
       .update(sessions)
-      .set({ currentTurn: newTurn, status: newStatus, updatedAt: now })
-      .where(eq(sessions.id, sessionId))
+      .set({
+        currentTurn: sql`${sessions.currentTurn} + 1`,
+        updatedAt: now,
+      })
+      .where(and(eq(sessions.id, sessionId), eq(sessions.status, "active")))
       .run();
 
-    return (await this.findById(sessionId))!;
+    const session = await this.findById(sessionId);
+    if (!session) throw new AppError("Session not found", 404);
+
+    // Check if maxTurns reached
+    if (session.currentTurn >= session.maxTurns) {
+      await this.updateStatus(sessionId, "completed");
+      return (await this.findById(sessionId))!;
+    }
+
+    return session;
   }
 
   async join(
