@@ -34,6 +34,7 @@ export function createAuthMiddleware(apiKeyStore: ApiKeyStore) {
 
     const authHeader = request.headers.authorization;
     if (!authHeader?.startsWith("Bearer ")) {
+      request.log.warn({ method: request.method, url: request.url }, `AUTH REJECTED 401 ${request.method} ${request.url} — Missing or invalid Authorization header`);
       reply.code(401).send({ error: "Missing or invalid Authorization header" });
       return;
     }
@@ -71,6 +72,8 @@ export function createAuthMiddleware(apiKeyStore: ApiKeyStore) {
       return;
     }
 
+    const tokenPreview = token.slice(0, 8) + "...";
+    request.log.warn({ method: request.method, url: request.url, tokenPreview }, `AUTH REJECTED 401 ${request.method} ${request.url} — Invalid token or API key (${tokenPreview})`);
     reply.code(401).send({ error: "Invalid token or API key" });
   };
 }

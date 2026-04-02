@@ -33,7 +33,25 @@ export interface AppConfig {
 }
 
 export function createApp(config: AppConfig = {}) {
-  const app = Fastify({ logger: true });
+  const app = Fastify({
+    logger: {
+      level: "info",
+      serializers: {
+        req(request) {
+          return {
+            method: request.method,
+            url: request.url,
+            remoteAddress: request.ip,
+          };
+        },
+        res(reply) {
+          return {
+            statusCode: reply.statusCode,
+          };
+        },
+      },
+    },
+  });
   const db = createDatabase(config.dbUrl);
 
   // Initialize database tables
@@ -62,18 +80,33 @@ export function createApp(config: AppConfig = {}) {
   app.register(multipart, { limits: { fileSize: 100 * 1024 * 1024 } }); // 100MB
   app.addHook("onRequest", createAuthMiddleware(ownerService));
 
-  // Error handler for Zod validation errors
+  // Error handler — logs rejection reason
   app.setErrorHandler((error: Error & { statusCode?: number }, request, reply) => {
     if (error.name === "ZodError") {
+      request.log.warn({ method: request.method, url: request.url, status: 400 }, `REJECTED 400 ${request.method} ${request.url} — Validation error: ${error.message}`);
       reply.code(400).send({ error: "Validation error", details: error });
       return;
     }
     if (error.statusCode) {
+      request.log.warn({ method: request.method, url: request.url, status: error.statusCode, reason: error.message }, `REJECTED ${error.statusCode} ${request.method} ${request.url} — ${error.message}`);
       reply.code(error.statusCode).send({ error: error.message });
       return;
     }
-    request.log.error(error);
+    request.log.error({ err: error, method: request.method, url: request.url }, `ERROR 500 ${request.method} ${request.url} — ${error.message}`);
     reply.code(500).send({ error: "Internal server error" });
+  });
+
+  // Log all 4xx/5xx responses with request context
+  app.addHook("onResponse", (request, reply, done) => {
+    const status = reply.statusCode;
+    if (status >= 400) {
+      const level = status >= 500 ? "error" : "warn";
+      request.log[level](
+        { method: request.method, url: request.url, status },
+        `${status} ${request.method} ${request.url}`,
+      );
+    }
+    done();
   });
 
   // Routes
