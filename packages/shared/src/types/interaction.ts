@@ -16,6 +16,7 @@ export interface InteractionTarget {
   ownerId?: string; // DM to owner
   channel?: string; // channel message
   capability?: string; // broadcast by capability
+  sessionId?: string; // link to a session
 }
 
 export interface InteractionMetadata {

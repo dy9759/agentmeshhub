@@ -62,6 +62,7 @@ export const interactions = sqliteTable("interactions", {
   toOwner: text("to_owner"), // DM target (ownerId)
   channel: text("channel"), // channel target
   capability: text("capability"), // broadcast target
+  sessionId: text("session_id"), // links interaction to a session
   contentType: text("content_type").notNull().default("text"),
   schema: text("schema"), // interaction schema name
   payload: text("payload").notNull(), // JSON
@@ -114,6 +115,25 @@ export const files = sqliteTable("files", {
     .notNull()
     .default(sql`(datetime('now'))`),
   expiresAt: text("expires_at").notNull(),
+});
+
+// Sessions (multi-turn collaboration)
+export const sessions = sqliteTable("sessions", {
+  id: text("id").primaryKey(),
+  title: text("title").notNull(),
+  creatorId: text("creator_id").notNull(),
+  creatorType: text("creator_type").notNull(),
+  status: text("status").notNull().default("active"),
+  participants: text("participants").notNull(), // JSON array
+  maxTurns: integer("max_turns").notNull().default(20),
+  currentTurn: integer("current_turn").notNull().default(0),
+  context: text("context"), // JSON
+  createdAt: text("created_at")
+    .notNull()
+    .default(sql`(datetime('now'))`),
+  updatedAt: text("updated_at")
+    .notNull()
+    .default(sql`(datetime('now'))`),
 });
 
 // Tasks (collaboration model)

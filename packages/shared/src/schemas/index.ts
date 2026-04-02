@@ -55,10 +55,11 @@ export const InteractionTargetSchema = z
     ownerId: z.string().optional(),
     channel: z.string().optional(),
     capability: z.string().optional(),
+    sessionId: z.string().optional(),
   })
   .refine(
-    (t) => t.agentId || t.ownerId || t.channel || t.capability,
-    "At least one target (agentId, ownerId, channel, or capability) is required",
+    (t) => t.agentId || t.ownerId || t.channel || t.capability || t.sessionId,
+    "At least one target (agentId, ownerId, channel, capability, or sessionId) is required",
   );
 
 export const InteractionMetadataSchema = z.object({
@@ -142,4 +143,66 @@ export const UpdateTaskStatusRequestSchema = z.object({
 // Owner schemas
 export const CreateOwnerRequestSchema = z.object({
   name: z.string().min(1).max(128),
+});
+
+// Session schemas
+export const SessionStatusSchema = z.enum([
+  "active",
+  "waiting",
+  "completed",
+  "failed",
+  "archived",
+]);
+
+export const SessionParticipantSchema = z.object({
+  id: z.string().min(1),
+  type: z.enum(["agent", "owner"]),
+  role: z.enum(["creator", "participant"]),
+  joinedAt: z.string(),
+});
+
+export const CreateSessionRequestSchema = z.object({
+  title: z.string().min(1).max(256),
+  participants: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        type: z.enum(["agent", "owner"]),
+      }),
+    )
+    .min(1),
+  maxTurns: z.number().int().positive().optional().default(20),
+  context: z
+    .object({
+      topic: z.string().min(1),
+      files: z
+        .array(
+          z.object({
+            name: z.string(),
+            content: z.string().optional(),
+            fileId: z.string().optional(),
+          }),
+        )
+        .optional(),
+      codeSnippets: z
+        .array(
+          z.object({
+            language: z.string(),
+            code: z.string(),
+            description: z.string(),
+          }),
+        )
+        .optional(),
+      decisions: z
+        .array(
+          z.object({
+            decision: z.string(),
+            by: z.string(),
+            at: z.string(),
+          }),
+        )
+        .optional(),
+      summary: z.string().optional(),
+    })
+    .optional(),
 });

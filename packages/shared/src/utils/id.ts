@@ -24,3 +24,7 @@ export function generateInteractionId(): string {
 export function generateFileId(): string {
   return generateId("file");
 }
+
+export function generateSessionId(): string {
+  return generateId("ses");
+}

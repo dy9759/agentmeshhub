@@ -72,6 +72,7 @@ export function initializeDatabase(db: DB): void {
       to_owner TEXT,
       channel TEXT,
       capability TEXT,
+      session_id TEXT,
       content_type TEXT NOT NULL DEFAULT 'text',
       schema TEXT,
       payload TEXT NOT NULL,
@@ -130,6 +131,22 @@ export function initializeDatabase(db: DB): void {
     )
   `);
 
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS sessions (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      creator_id TEXT NOT NULL,
+      creator_type TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active',
+      participants TEXT NOT NULL,
+      max_turns INTEGER NOT NULL DEFAULT 20,
+      current_turn INTEGER NOT NULL DEFAULT 0,
+      context TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+
   // Indexes for common queries
   db.run(sql`CREATE INDEX IF NOT EXISTS idx_agents_owner ON agents(owner_id)`);
   db.run(sql`CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status)`);
@@ -140,4 +157,6 @@ export function initializeDatabase(db: DB): void {
   db.run(sql`CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)`);
   db.run(sql`CREATE INDEX IF NOT EXISTS idx_tasks_assigned ON tasks(assigned_to)`);
   db.run(sql`CREATE INDEX IF NOT EXISTS idx_files_expires ON files(expires_at)`);
+  db.run(sql`CREATE INDEX IF NOT EXISTS idx_interactions_session ON interactions(session_id)`);
+  db.run(sql`CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status)`);
 }

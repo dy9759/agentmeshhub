@@ -15,6 +15,8 @@ import { channelRoutes } from "./routes/channels.js";
 import { taskRoutes } from "./routes/tasks.js";
 import { FileService } from "./services/file.service.js";
 import { fileRoutes } from "./routes/files.js";
+import { SessionService } from "./services/session.service.js";
+import { sessionRoutes } from "./routes/sessions.js";
 import { startStaleAgentReaper } from "./tasks/stale-agent-reaper.js";
 import { startFileExpiryReaper } from "./tasks/file-expiry-reaper.js";
 import { startInteractionReaper } from "./tasks/interaction-reaper.js";
@@ -50,6 +52,9 @@ export function createApp(config: AppConfig = {}) {
   const uploadsDir = join(process.cwd(), "uploads");
   const fileService = new FileService(db, uploadsDir);
 
+  // Session service
+  const sessionService = new SessionService(db);
+
   // Middleware
   app.register(cors);
   app.register(websocket);
@@ -78,6 +83,7 @@ export function createApp(config: AppConfig = {}) {
   channelRoutes(app, channelService, messageBusService);
   taskRoutes(app, taskEngineService);
   fileRoutes(app, fileService);
+  sessionRoutes(app, sessionService, messageBusService);
   websocketRoutes(app, wsManager);
 
   // Background tasks
@@ -101,6 +107,7 @@ export function createApp(config: AppConfig = {}) {
       channelService,
       taskEngineService,
       fileService,
+      sessionService,
     },
   };
 }
