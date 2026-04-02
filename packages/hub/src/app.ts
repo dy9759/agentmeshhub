@@ -54,6 +54,7 @@ export function createApp(config: AppConfig = {}) {
 
   // Session service
   const sessionService = new SessionService(db);
+  messageBusService.setSessionService(sessionService);
 
   // Middleware
   app.register(cors);

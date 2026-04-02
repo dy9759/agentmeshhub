@@ -1,10 +1,13 @@
 import type { WebSocket } from "ws";
 import type { Interaction, WSMessage } from "@agentmesh/shared";
+import { BoundedUUIDSet } from "../utils/bounded-uuid-set.js";
 
 interface AgentConnection {
   socket: WebSocket;
   agentId: string;
   lastPong: number;
+  /** Recently pushed interaction IDs for dedup */
+  recentPushes: BoundedUUIDSet;
 }
 
 const PING_INTERVAL_MS = 30_000;
@@ -29,6 +32,7 @@ export class WebSocketManager {
       socket,
       agentId,
       lastPong: Date.now(),
+      recentPushes: new BoundedUUIDSet(2000),
     });
 
     socket.on("close", () => {
@@ -57,6 +61,11 @@ export class WebSocketManager {
     const conn = this.connections.get(agentId);
     if (!conn || conn.socket.readyState !== 1) {
       return false;
+    }
+
+    // Dedup: skip if this interaction was already pushed to this agent
+    if (!conn.recentPushes.add(interaction.id)) {
+      return true; // already sent, treat as success
     }
 
     const msg: WSMessage = {

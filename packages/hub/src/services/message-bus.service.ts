@@ -38,6 +38,10 @@ function rowToInteraction(row: typeof interactions.$inferSelect): Interaction {
 
 export class MessageBusService implements MessageBus {
   private wsManager?: WebSocketManager;
+  private sessionService?: {
+    incrementTurn(id: string): Promise<any>;
+    findById(id: string): Promise<any>;
+  };
 
   constructor(
     private db: DB,
@@ -46,6 +50,12 @@ export class MessageBusService implements MessageBus {
 
   setWebSocketManager(wsManager: WebSocketManager): void {
     this.wsManager = wsManager;
+  }
+
+  setSessionService(
+    svc: { incrementTurn(id: string): Promise<any>; findById(id: string): Promise<any> },
+  ): void {
+    this.sessionService = svc;
   }
 
   /**
@@ -127,6 +137,15 @@ export class MessageBusService implements MessageBus {
     // Try WebSocket push for DM to agent
     if (this.wsManager && request.target.agentId) {
       this.wsManager.pushToAgent(request.target.agentId, interaction);
+    }
+
+    // Auto-increment session turn
+    if (request.target.sessionId && this.sessionService) {
+      try {
+        await this.sessionService.incrementTurn(request.target.sessionId);
+      } catch {
+        // Session may already be completed — don't fail the send
+      }
     }
 
     return interaction;
