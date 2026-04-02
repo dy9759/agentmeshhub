@@ -82,7 +82,10 @@ export const InteractionPayloadSchema = z.object({
   text: z.string().optional(),
   data: z.record(z.unknown()).optional(),
   file: FileAttachmentSchema.optional(),
-});
+}).refine(
+  (p) => p.text !== undefined || p.data !== undefined || p.file !== undefined,
+  "Payload must contain at least one of: text, data, or file",
+);
 
 export const SendInteractionRequestSchema = z.object({
   type: InteractionTypeSchema,

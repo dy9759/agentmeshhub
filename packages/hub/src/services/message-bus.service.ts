@@ -7,7 +7,7 @@ import {
   type SenderType,
 } from "@agentmesh/shared";
 import type { DB } from "../db/connection.js";
-import { interactions, channelMembers, agents, owners } from "../db/schema.js";
+import { interactions, channelMembers, agents, owners, sessions } from "../db/schema.js";
 import type { MessageBus } from "../interfaces/message-bus.js";
 import type { Registry } from "../interfaces/registry.js";
 import type { WebSocketManager } from "./websocket-manager.js";
@@ -92,6 +92,19 @@ export class MessageBusService implements MessageBus {
   ): Promise<Interaction> {
     // P0: Validate target exists
     this.validateTarget(request);
+
+    // Block messages to completed/failed/archived sessions
+    if (request.target.sessionId) {
+      const session = this.db
+        .select({ status: sessions.status })
+        .from(sessions)
+        .where(eq(sessions.id, request.target.sessionId))
+        .get();
+      if (!session) throw new AppError(`Session '${request.target.sessionId}' not found`, 404);
+      if (session.status !== "active" && session.status !== "waiting") {
+        throw new AppError(`Session '${request.target.sessionId}' is ${session.status}, cannot send messages`, 400);
+      }
+    }
 
     const id = generateInteractionId();
     const now = new Date().toISOString();

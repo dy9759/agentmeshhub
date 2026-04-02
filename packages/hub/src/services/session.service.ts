@@ -11,7 +11,7 @@ import {
   type SenderType,
 } from "@agentmesh/shared";
 import type { DB } from "../db/connection.js";
-import { sessions, interactions } from "../db/schema.js";
+import { sessions, interactions, agents, owners } from "../db/schema.js";
 
 function safeJsonParse<T>(str: string | null, fallback: T): T {
   if (!str) return fallback;
@@ -78,6 +78,17 @@ export class SessionService {
         joinedAt: now,
       })),
     ];
+
+    // Validate that each participant exists
+    for (const p of request.participants) {
+      if (p.type === "agent") {
+        const agent = this.db.select({ agentId: agents.agentId }).from(agents).where(eq(agents.agentId, p.id)).get();
+        if (!agent) throw new AppError(`Participant '${p.id}' not found`, 404);
+      } else if (p.type === "owner") {
+        const owner = this.db.select({ ownerId: owners.ownerId }).from(owners).where(eq(owners.ownerId, p.id)).get();
+        if (!owner) throw new AppError(`Participant '${p.id}' not found`, 404);
+      }
+    }
 
     this.db
       .insert(sessions)
