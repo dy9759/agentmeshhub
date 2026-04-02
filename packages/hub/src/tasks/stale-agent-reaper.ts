@@ -1,7 +1,7 @@
 import type { RegistryService } from "../services/registry.service.js";
 
-const REAP_INTERVAL_MS = 30_000; // Check every 30s
-const STALE_THRESHOLD_SECONDS = 90; // 90s without heartbeat = offline
+const REAP_INTERVAL_MS = 60_000; // Check every 60s
+const STALE_THRESHOLD_SECONDS = 300; // 5 minutes without heartbeat = offline
 
 export function startStaleAgentReaper(registry: RegistryService): NodeJS.Timeout {
   return setInterval(async () => {

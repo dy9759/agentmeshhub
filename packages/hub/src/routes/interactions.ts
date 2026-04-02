@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { SendInteractionRequestSchema, type SenderType } from "@agentmesh/shared";
+import { SendInteractionRequestSchema, AppError, type SenderType } from "@agentmesh/shared";
 import type { MessageBusService } from "../services/message-bus.service.js";
 import { getAuth } from "../auth/middleware.js";
 
@@ -8,7 +8,6 @@ export function interactionRoutes(
   messageBus: MessageBusService,
 ) {
   // Send interaction (unified: DM, channel, broadcast)
-  // Supports both Agent and Owner auth
   app.post("/api/interactions", async (request, reply) => {
     const auth = getAuth(request);
     const body = SendInteractionRequestSchema.parse(request.body);
@@ -27,27 +26,35 @@ export function interactionRoutes(
       return;
     }
 
-    // Route by target type
-    if (body.type === "broadcast" && body.target.capability) {
-      const results = await messageBus.broadcast(fromId, fromType, body);
-      reply.code(201).send({ interactions: results, delivered: results.length });
-    } else if (body.target.channel) {
-      const result = await messageBus.sendToChannel(
-        fromId,
-        fromType,
-        body.target.channel,
-        body,
-      );
-      reply.code(201).send({ id: result.id, delivered: true });
-    } else if (body.target.agentId || body.target.ownerId) {
-      const result = await messageBus.send(fromId, fromType, body);
-      reply.code(201).send({ id: result.id, delivered: true });
-    } else {
-      reply.code(400).send({ error: "Target must specify agentId, ownerId, channel, or capability" });
+    try {
+      // Route by target type
+      if (body.type === "broadcast" && body.target.capability) {
+        const results = await messageBus.broadcast(fromId, fromType, body);
+        reply.code(201).send({ interactions: results, delivered: results.length });
+      } else if (body.target.channel) {
+        const result = await messageBus.sendToChannel(
+          fromId,
+          fromType,
+          body.target.channel,
+          body,
+        );
+        reply.code(201).send({ id: result.id, delivered: true });
+      } else if (body.target.agentId || body.target.ownerId) {
+        const result = await messageBus.send(fromId, fromType, body);
+        reply.code(201).send({ id: result.id, delivered: true });
+      } else {
+        reply.code(400).send({ error: "Target must specify agentId, ownerId, channel, or capability" });
+      }
+    } catch (err) {
+      if (err instanceof AppError) {
+        reply.code(err.statusCode).send({ error: err.message });
+        return;
+      }
+      throw err;
     }
   });
 
-  // Conversation list — agents/owners you've chatted with
+  // Conversation list
   app.get("/api/conversations", async (request) => {
     const query = request.query as Record<string, string>;
     const agentId = query.agentId;
@@ -82,7 +89,7 @@ export function interactionRoutes(
     return { messages };
   });
 
-  // Poll inbox (agent)
+  // Poll inbox
   app.get("/api/interactions", async (request) => {
     const query = request.query as Record<string, string>;
     const agentId = query.agentId;
@@ -91,13 +98,13 @@ export function interactionRoutes(
     const limit = query.limit ? parseInt(query.limit, 10) : undefined;
 
     if (ownerId) {
-      const results = await messageBus.pollOwner(ownerId, { afterId, limit });
-      return { interactions: results };
+      const result = await messageBus.pollOwner(ownerId, { afterId, limit });
+      return result; // { interactions, nextCursor }
     }
     if (agentId) {
-      const results = await messageBus.poll(agentId, { afterId, limit });
-      return { interactions: results };
+      const result = await messageBus.poll(agentId, { afterId, limit });
+      return result; // { interactions, nextCursor }
     }
-    return { interactions: [] };
+    return { interactions: [], nextCursor: undefined };
   });
 }

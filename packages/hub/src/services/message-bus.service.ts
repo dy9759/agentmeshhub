@@ -1,12 +1,13 @@
-import { eq, and, or, gt, desc, inArray, sql } from "drizzle-orm";
+import { eq, and, or, gt, ne, desc, inArray, sql } from "drizzle-orm";
 import {
   generateInteractionId,
+  AppError,
   type Interaction,
   type SendInteractionRequest,
   type SenderType,
 } from "@agentmesh/shared";
 import type { DB } from "../db/connection.js";
-import { interactions, channelMembers } from "../db/schema.js";
+import { interactions, channelMembers, agents, owners } from "../db/schema.js";
 import type { MessageBus } from "../interfaces/message-bus.js";
 import type { Registry } from "../interfaces/registry.js";
 import type { WebSocketManager } from "./websocket-manager.js";
@@ -20,7 +21,7 @@ function rowToInteraction(row: typeof interactions.$inferSelect): Interaction {
     contentType: row.contentType as Interaction["contentType"],
     fromId,
     fromType,
-    fromAgent: fromId, // deprecated compat
+    fromAgent: fromType === "agent" ? fromId : "", // deprecated: only set for agent senders
     target: {
       agentId: row.toAgent ?? undefined,
       ownerId: row.toOwner ?? undefined,
@@ -46,11 +47,41 @@ export class MessageBusService implements MessageBus {
     this.wsManager = wsManager;
   }
 
+  /**
+   * Validate that the target agent or owner exists.
+   * Throws AppError(404) if not found.
+   */
+  private validateTarget(request: SendInteractionRequest): void {
+    if (request.target.agentId) {
+      const agent = this.db
+        .select({ agentId: agents.agentId })
+        .from(agents)
+        .where(eq(agents.agentId, request.target.agentId))
+        .get();
+      if (!agent) {
+        throw new AppError(`Target agent '${request.target.agentId}' not found`, 404);
+      }
+    }
+    if (request.target.ownerId) {
+      const owner = this.db
+        .select({ ownerId: owners.ownerId })
+        .from(owners)
+        .where(eq(owners.ownerId, request.target.ownerId))
+        .get();
+      if (!owner) {
+        throw new AppError(`Target owner '${request.target.ownerId}' not found`, 404);
+      }
+    }
+  }
+
   async send(
     fromId: string,
     fromType: SenderType,
     request: SendInteractionRequest,
   ): Promise<Interaction> {
+    // P0: Validate target exists
+    this.validateTarget(request);
+
     const id = generateInteractionId();
     const now = new Date().toISOString();
 
@@ -61,7 +92,7 @@ export class MessageBusService implements MessageBus {
         type: request.type,
         fromId,
         fromType,
-        fromAgent: fromType === "agent" ? fromId : null,
+        fromAgent: fromType === "agent" ? fromId : null, // P1: only set for agents
         toAgent: request.target.agentId ?? null,
         toOwner: request.target.ownerId ?? null,
         channel: request.target.channel ?? null,
@@ -83,7 +114,7 @@ export class MessageBusService implements MessageBus {
       contentType: request.contentType,
       fromId,
       fromType,
-      fromAgent: fromId, // deprecated compat
+      fromAgent: fromType === "agent" ? fromId : "", // deprecated compat
       target: request.target,
       payload: request.payload,
       metadata: request.metadata,
@@ -139,12 +170,29 @@ export class MessageBusService implements MessageBus {
   }
 
   /**
-   * Poll inbox for an agent.
+   * Mark interactions as delivered after polling.
+   */
+  private markDelivered(ids: string[]): void {
+    if (ids.length === 0) return;
+    this.db
+      .update(interactions)
+      .set({ status: "delivered" })
+      .where(
+        and(
+          inArray(interactions.id, ids),
+          eq(interactions.status, "pending"),
+        ),
+      )
+      .run();
+  }
+
+  /**
+   * Poll inbox for an agent. Returns interactions and marks them as delivered.
    */
   async poll(
     agentId: string,
     opts?: { afterId?: string; limit?: number },
-  ): Promise<Interaction[]> {
+  ): Promise<{ interactions: Interaction[]; nextCursor?: string }> {
     const limit = opts?.limit ?? 50;
 
     // Get direct messages to this agent
@@ -156,7 +204,6 @@ export class MessageBusService implements MessageBus {
         .from(interactions)
         .where(eq(interactions.id, opts.afterId))
         .get();
-
       if (cursor) {
         conditions.push(gt(interactions.createdAt, cursor.createdAt));
       }
@@ -221,7 +268,15 @@ export class MessageBusService implements MessageBus {
         new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
     );
 
-    return unique.slice(0, limit).map(rowToInteraction);
+    const sliced = unique.slice(0, limit);
+
+    // Mark as delivered
+    this.markDelivered(sliced.filter((r) => r.status === "pending").map((r) => r.id));
+
+    const result = sliced.map(rowToInteraction);
+    const nextCursor = result.length > 0 ? result[result.length - 1].id : undefined;
+
+    return { interactions: result, nextCursor };
   }
 
   /**
@@ -230,7 +285,7 @@ export class MessageBusService implements MessageBus {
   async pollOwner(
     ownerId: string,
     opts?: { afterId?: string; limit?: number },
-  ): Promise<Interaction[]> {
+  ): Promise<{ interactions: Interaction[]; nextCursor?: string }> {
     const limit = opts?.limit ?? 50;
     const conditions = [eq(interactions.toOwner, ownerId)];
 
@@ -253,7 +308,13 @@ export class MessageBusService implements MessageBus {
       .limit(limit)
       .all();
 
-    return rows.map(rowToInteraction);
+    // Mark as delivered
+    this.markDelivered(rows.filter((r) => r.status === "pending").map((r) => r.id));
+
+    const result = rows.map(rowToInteraction);
+    const nextCursor = result.length > 0 ? result[result.length - 1].id : undefined;
+
+    return { interactions: result, nextCursor };
   }
 
   /**
@@ -277,6 +338,7 @@ export class MessageBusService implements MessageBus {
           ),
           sql`(${interactions.toAgent} IS NOT NULL OR ${interactions.toOwner} IS NOT NULL)`,
           sql`${interactions.channel} IS NULL`,
+          ne(interactions.type, "broadcast"), // exclude broadcasts
         ),
       )
       .orderBy(desc(interactions.createdAt))
@@ -284,7 +346,6 @@ export class MessageBusService implements MessageBus {
 
     const convMap = new Map<string, Interaction>();
     for (const row of rows) {
-      // Determine the "other" party
       const isFromMe = row.fromId === agentId;
       const otherId = isFromMe
         ? (row.toAgent ?? row.toOwner!)
@@ -325,6 +386,7 @@ export class MessageBusService implements MessageBus {
             ),
           ),
           sql`${interactions.channel} IS NULL`,
+          ne(interactions.type, "broadcast"),
         ),
       )
       .orderBy(desc(interactions.createdAt))
@@ -336,12 +398,10 @@ export class MessageBusService implements MessageBus {
       let peerId: string;
       let peerType: "agent" | "owner";
       if (isFromMe) {
-        // I sent it — peer is the target
         if (row.toAgent) { peerId = row.toAgent; peerType = "agent"; }
         else if (row.toOwner) { peerId = row.toOwner; peerType = "owner"; }
         else continue;
       } else {
-        // Sent to me — peer is the sender
         peerId = row.fromId!;
         peerType = (row.fromType ?? "agent") as "agent" | "owner";
       }
@@ -359,7 +419,8 @@ export class MessageBusService implements MessageBus {
   }
 
   /**
-   * Get chat history between two entities (agent↔agent, owner↔agent, owner↔owner).
+   * Get chat history between two entities.
+   * Excludes broadcasts — only direct messages.
    */
   async getChatHistory(
     myId: string,
@@ -379,6 +440,7 @@ export class MessageBusService implements MessageBus {
           or(eq(interactions.toAgent, myId), eq(interactions.toOwner, myId)),
         ),
       )!,
+      ne(interactions.type, "broadcast"), // P1: exclude broadcasts
     ];
 
     if (opts?.afterId) {
@@ -430,5 +492,17 @@ export class MessageBusService implements MessageBus {
       .all();
 
     return rows.map(rowToInteraction);
+  }
+
+  /**
+   * P2: Clean up old interactions older than given days.
+   */
+  async cleanOldInteractions(olderThanDays: number): Promise<number> {
+    const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000).toISOString();
+    const result = this.db
+      .delete(interactions)
+      .where(sql`${interactions.createdAt} < ${cutoff}`)
+      .run();
+    return result.changes;
   }
 }

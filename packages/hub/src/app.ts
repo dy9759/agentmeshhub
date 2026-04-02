@@ -17,6 +17,7 @@ import { FileService } from "./services/file.service.js";
 import { fileRoutes } from "./routes/files.js";
 import { startStaleAgentReaper } from "./tasks/stale-agent-reaper.js";
 import { startFileExpiryReaper } from "./tasks/file-expiry-reaper.js";
+import { startInteractionReaper } from "./tasks/interaction-reaper.js";
 import multipart from "@fastify/multipart";
 import websocket from "@fastify/websocket";
 import { WebSocketManager } from "./services/websocket-manager.js";
@@ -82,9 +83,11 @@ export function createApp(config: AppConfig = {}) {
   // Background tasks
   const reaper = startStaleAgentReaper(registryService);
   const fileReaper = startFileExpiryReaper(fileService);
+  const interactionReaper = startInteractionReaper(messageBusService);
   app.addHook("onClose", () => {
     clearInterval(reaper);
     clearInterval(fileReaper);
+    clearInterval(interactionReaper);
     wsManager.destroy();
   });
 

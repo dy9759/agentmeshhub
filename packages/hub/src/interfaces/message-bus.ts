@@ -27,12 +27,12 @@ export interface MessageBus {
   poll(
     agentId: string,
     opts?: { afterId?: string; limit?: number },
-  ): Promise<Interaction[]>;
+  ): Promise<{ interactions: Interaction[]; nextCursor?: string }>;
 
   pollOwner(
     ownerId: string,
     opts?: { afterId?: string; limit?: number },
-  ): Promise<Interaction[]>;
+  ): Promise<{ interactions: Interaction[]; nextCursor?: string }>;
 
   getChannelMessages(
     channel: string,
