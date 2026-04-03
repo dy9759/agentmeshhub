@@ -175,6 +175,18 @@ export function initializeDatabase(db: DB): void {
     )
   `);
 
+  // Schema migrations — add columns to existing tables
+  const migrations = [
+    "ALTER TABLE agents ADD COLUMN auto_reply_config TEXT",
+    "ALTER TABLE interactions ADD COLUMN session_id TEXT",
+    "ALTER TABLE interactions ADD COLUMN to_owner TEXT",
+    "ALTER TABLE interactions ADD COLUMN from_id TEXT",
+    "ALTER TABLE interactions ADD COLUMN from_type TEXT DEFAULT 'agent'",
+  ];
+  for (const migration of migrations) {
+    try { db.run(sql.raw(migration)); } catch { /* column already exists */ }
+  }
+
   // Indexes for common queries
   db.run(sql`CREATE INDEX IF NOT EXISTS idx_remote_sessions_agent ON remote_sessions(agent_id)`);
   db.run(sql`CREATE INDEX IF NOT EXISTS idx_teams_leader ON teams(leader_id)`);
