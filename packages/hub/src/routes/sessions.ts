@@ -130,6 +130,31 @@ export function sessionRoutes(
     }
   });
 
+  // Start auto discussion
+  app.post("/api/sessions/:id/auto-start", async (request, reply) => {
+    const auth = getAuth(request);
+    const { id } = request.params as { id: string };
+    const autoReplyService = (app as any).__autoReplyService;
+    if (!autoReplyService) { reply.code(500).send({ error: "Auto-reply service not available" }); return; }
+
+    const result = await autoReplyService.startAutoDiscussion(id);
+    if (!result.started) {
+      reply.code(400).send({ error: result.reason });
+      return;
+    }
+    reply.send({ sessionId: id, autoDiscussion: true });
+  });
+
+  // Stop auto discussion
+  app.post("/api/sessions/:id/auto-stop", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const autoReplyService = (app as any).__autoReplyService;
+    if (autoReplyService) {
+      autoReplyService.stopAutoDiscussion(id);
+    }
+    reply.send({ sessionId: id, autoDiscussion: false });
+  });
+
   // List sessions
   app.get("/api/sessions", async (request) => {
     const auth = getAuth(request);

@@ -57,6 +57,7 @@ export function initializeDatabase(db: DB): void {
       token_expires_at TEXT,
       registered_at TEXT NOT NULL DEFAULT (datetime('now')),
       last_heartbeat TEXT NOT NULL DEFAULT (datetime('now')),
+      auto_reply_config TEXT,
       UNIQUE(name, machine_id, owner_id)
     )
   `);

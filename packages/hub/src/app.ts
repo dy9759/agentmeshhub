@@ -20,6 +20,7 @@ import { sessionRoutes } from "./routes/sessions.js";
 import { RemoteSessionService } from "./services/remote-session.service.js";
 import { remoteSessionRoutes } from "./routes/remote-sessions.js";
 import { TeamService } from "./services/team.service.js";
+import { AutoReplyService } from "./services/auto-reply.service.js";
 import { teamRoutes } from "./routes/teams.js";
 import { startStaleAgentReaper } from "./tasks/stale-agent-reaper.js";
 import { startFileExpiryReaper } from "./tasks/file-expiry-reaper.js";
@@ -83,6 +84,12 @@ export function createApp(config: AppConfig = {}) {
   // Remote session service
   const remoteSessionService = new RemoteSessionService(db);
 
+  // Auto-reply service
+  const autoReplyService = new AutoReplyService(db);
+  autoReplyService.setMessageBus(messageBusService);
+  autoReplyService.setSessionService(sessionService);
+  messageBusService.setAutoReplyService(autoReplyService);
+
   // Team service
   const teamService = new TeamService(db);
 
@@ -135,6 +142,9 @@ export function createApp(config: AppConfig = {}) {
   remoteSessionRoutes(app, remoteSessionService);
   teamRoutes(app, teamService, messageBusService);
 
+  // Expose autoReplyService to routes (avoiding parameter changes)
+  (app as any).__autoReplyService = autoReplyService;
+
   // Typing indicator (lightweight, no DB persistence)
   app.post("/api/typing", async (request, reply) => {
     const auth = getAuth(request);
@@ -176,6 +186,7 @@ export function createApp(config: AppConfig = {}) {
       sessionService,
       remoteSessionService,
       teamService,
+      autoReplyService,
     },
   };
 }

@@ -98,6 +98,35 @@ export function agentRoutes(app: FastifyInstance, registry: RegistryService) {
     return { agents };
   });
 
+  // Configure auto-reply
+  app.patch("/api/agents/:id/auto-reply", async (request, reply) => {
+    const auth = getAuth(request);
+    const { id } = request.params as { id: string };
+    const agent = await registry.findById(id);
+    if (!agent) { reply.code(404).send({ error: "Agent not found" }); return; }
+    if (agent.ownerId !== auth.ownerId) { reply.code(403).send({ error: "Not your agent" }); return; }
+
+    const body = request.body as Record<string, unknown>;
+    const autoReplyService = (app as any).__autoReplyService;
+    if (autoReplyService) {
+      await autoReplyService.updateConfig(id, body);
+    }
+    reply.send({ agentId: id, autoReplyConfig: body });
+  });
+
+  // Get auto-reply config
+  app.get("/api/agents/:id/auto-reply", async (request, reply) => {
+    const auth = getAuth(request);
+    const { id } = request.params as { id: string };
+    const agent = await registry.findById(id);
+    if (!agent) { reply.code(404).send({ error: "Agent not found" }); return; }
+    if (agent.ownerId !== auth.ownerId) { reply.code(403).send({ error: "Not your agent" }); return; }
+
+    const autoReplyService = (app as any).__autoReplyService;
+    const config = autoReplyService?.getConfig(id) ?? { enabled: false };
+    reply.send({ agentId: id, autoReplyConfig: config });
+  });
+
   // Unregister
   app.delete("/api/agents/:id", async (request, reply) => {
     const { id } = request.params as { id: string };

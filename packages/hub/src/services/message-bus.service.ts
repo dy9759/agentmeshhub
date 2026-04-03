@@ -11,6 +11,7 @@ import { interactions, channelMembers, agents, owners, sessions } from "../db/sc
 import type { MessageBus } from "../interfaces/message-bus.js";
 import type { Registry } from "../interfaces/registry.js";
 import type { WebSocketManager } from "./websocket-manager.js";
+import type { AutoReplyService } from "./auto-reply.service.js";
 
 function rowToInteraction(row: typeof interactions.$inferSelect): Interaction {
   const fromType = (row.fromType ?? "agent") as SenderType;
@@ -38,6 +39,7 @@ function rowToInteraction(row: typeof interactions.$inferSelect): Interaction {
 
 export class MessageBusService implements MessageBus {
   private wsManager?: WebSocketManager;
+  private autoReplyService?: AutoReplyService;
   private sessionService?: {
     incrementTurn(id: string): Promise<any>;
     findById(id: string): Promise<any>;
@@ -56,6 +58,10 @@ export class MessageBusService implements MessageBus {
     svc: { incrementTurn(id: string): Promise<any>; findById(id: string): Promise<any> },
   ): void {
     this.sessionService = svc;
+  }
+
+  setAutoReplyService(svc: AutoReplyService): void {
+    this.autoReplyService = svc;
   }
 
   /**
@@ -158,6 +164,16 @@ export class MessageBusService implements MessageBus {
         type: "interaction",
         payload: { interaction },
       });
+    }
+
+    // Trigger auto-reply if target agent has it enabled
+    if (this.autoReplyService && request.target.agentId && request.target.sessionId) {
+      const targetAgentId = request.target.agentId;
+      if (this.autoReplyService.shouldAutoReply(targetAgentId, interaction)) {
+        // Fire and forget — don't block the send
+        this.autoReplyService.executeAutoReply(targetAgentId, request.target.sessionId, interaction)
+          .catch(err => console.error("[auto-reply] trigger error:", err));
+      }
     }
 
     // Auto-increment session turn

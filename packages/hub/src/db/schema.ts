@@ -49,6 +49,7 @@ export const agents = sqliteTable("agents", {
   lastHeartbeat: text("last_heartbeat")
     .notNull()
     .default(sql`(datetime('now'))`),
+  autoReplyConfig: text("auto_reply_config"), // JSON: { enabled, permissions, llmEndpoint, llmApiKey, model, systemPrompt }
 });
 
 // Interactions table (unified messages)

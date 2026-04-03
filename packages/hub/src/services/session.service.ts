@@ -106,7 +106,7 @@ export class SessionService {
         creatorType,
         status: "active",
         participants: JSON.stringify(participants),
-        maxTurns: request.maxTurns ?? 20,
+        maxTurns: request.maxTurns ?? 0,
         currentTurn: 0,
         context: request.context ? JSON.stringify(request.context) : null,
         createdAt: now,
@@ -167,8 +167,8 @@ export class SessionService {
     const session = await this.findById(sessionId);
     if (!session) throw new AppError("Session not found", 404);
 
-    // Check if maxTurns reached
-    if (session.currentTurn >= session.maxTurns) {
+    // Check if maxTurns reached (maxTurns=0 means unlimited)
+    if (session.maxTurns > 0 && session.currentTurn >= session.maxTurns) {
       await this.updateStatus(sessionId, "completed");
       return (await this.findById(sessionId))!;
     }
