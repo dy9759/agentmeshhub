@@ -194,13 +194,15 @@ export function initializeDatabase(db: DB): void {
     "ALTER TABLE agents ADD COLUMN bio TEXT",
     "ALTER TABLE agents ADD COLUMN tags TEXT",
     "ALTER TABLE agents ADD COLUMN agent_metadata TEXT",
-    "ALTER TABLE owners ADD COLUMN username TEXT UNIQUE",
+    "ALTER TABLE owners ADD COLUMN username TEXT",
     "ALTER TABLE owners ADD COLUMN password_hash TEXT",
   ];
   for (const migration of migrations) {
     try { db.run(sql.raw(migration)); } catch { /* column already exists */ }
   }
 
+  // Indexes (includes unique index for username)
+  db.run(sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_owners_username ON owners(username)`);
   // Indexes for common queries
   db.run(sql`CREATE INDEX IF NOT EXISTS idx_remote_sessions_agent ON remote_sessions(agent_id)`);
   db.run(sql`CREATE INDEX IF NOT EXISTS idx_teams_leader ON teams(leader_id)`);
