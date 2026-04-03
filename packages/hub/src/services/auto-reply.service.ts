@@ -3,6 +3,15 @@ import type { DB } from "../db/connection.js";
 import { agents, interactions, channelMembers } from "../db/schema.js";
 import type { Interaction } from "@agentmesh/shared";
 
+export type LLMProvider = "anthropic" | "openai-compatible";
+
+export interface LLMBackend {
+  provider: LLMProvider;
+  endpoint: string;
+  apiKey: string;
+  model: string;
+}
+
 export interface AutoReplyConfig {
   enabled: boolean;
   pollIntervalMs?: number; // default 5000 (5 seconds)
@@ -12,9 +21,17 @@ export interface AutoReplyConfig {
     autoInviteAgents?: boolean;
     maxCostPerSession?: number;
   };
+  // Primary LLM (legacy fields, maps to anthropic)
   llmEndpoint?: string;
   llmApiKey?: string;
   model?: string;
+  // Fallback LLM (e.g. 百炼 DashScope)
+  fallback?: {
+    provider: LLMProvider;
+    endpoint: string;
+    apiKey: string;
+    model: string;
+  };
   systemPrompt?: string;
 }
 
@@ -88,23 +105,112 @@ export class AutoReplyService {
     return true;
   }
 
+  /**
+   * Build the list of LLM backends to try (primary → fallback).
+   */
+  private getBackends(config: AutoReplyConfig): LLMBackend[] {
+    const backends: LLMBackend[] = [];
+
+    // Primary: from legacy fields
+    if (config.llmApiKey) {
+      const endpoint = config.llmEndpoint ?? "https://api.anthropic.com/v1/messages";
+      const isOpenAI = endpoint.includes("dashscope") || endpoint.includes("openai") || endpoint.includes("compatible");
+      backends.push({
+        provider: isOpenAI ? "openai-compatible" : "anthropic",
+        endpoint,
+        apiKey: config.llmApiKey,
+        model: config.model ?? (isOpenAI ? "qwen-plus" : "claude-sonnet-4-20250514"),
+      });
+    }
+
+    // Fallback
+    if (config.fallback?.apiKey) {
+      backends.push({
+        provider: config.fallback.provider ?? "openai-compatible",
+        endpoint: config.fallback.endpoint,
+        apiKey: config.fallback.apiKey,
+        model: config.fallback.model,
+      });
+    }
+
+    return backends;
+  }
+
+  /**
+   * Call Anthropic API format.
+   */
+  private async callAnthropic(backend: LLMBackend, systemPrompt: string, messages: Array<{ role: string; content: string }>): Promise<string> {
+    const res = await fetch(backend.endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": backend.apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: backend.model,
+        max_tokens: 2048,
+        system: systemPrompt,
+        messages: messages.length > 0 ? messages : [{ role: "user", content: "Start the discussion." }],
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Anthropic ${res.status}: ${err}`);
+    }
+
+    const data = await res.json() as any;
+    return data.content?.[0]?.text ?? "";
+  }
+
+  /**
+   * Call OpenAI-compatible API format (百炼 DashScope, OpenAI, etc).
+   */
+  private async callOpenAICompatible(backend: LLMBackend, systemPrompt: string, messages: Array<{ role: string; content: string }>): Promise<string> {
+    const allMessages = [
+      { role: "system", content: systemPrompt },
+      ...(messages.length > 0 ? messages : [{ role: "user", content: "Start the discussion." }]),
+    ];
+
+    const res = await fetch(backend.endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${backend.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: backend.model,
+        messages: allMessages,
+        max_tokens: 2048,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`OpenAI-compatible ${res.status}: ${err}`);
+    }
+
+    const data = await res.json() as any;
+    return data.choices?.[0]?.message?.content ?? "";
+  }
+
   async generateReply(
     config: AutoReplyConfig,
     contextMessages: Interaction[],
     context: any,
     agentName: string,
   ): Promise<string> {
-    const endpoint = config.llmEndpoint ?? "https://api.anthropic.com/v1/messages";
-    const apiKey = config.llmApiKey;
-    const model = config.model ?? "claude-sonnet-4-20250514";
+    const backends = this.getBackends(config);
 
-    if (!apiKey) {
-      return "[AutoReply] No LLM API key configured.";
+    if (backends.length === 0) {
+      return "[AutoReply] No LLM configured. Set llmApiKey or fallback.";
     }
 
     const systemPrompt = config.systemPrompt ??
       `You are ${agentName}, an AI agent participating in a collaborative discussion. ` +
-      `Respond thoughtfully. When the discussion is concluded, end with [END].`;
+      `Respond naturally based on the conversation context. ` +
+      `When the discussion is concluded, end with [END].`;
 
     const messages = contextMessages.map(m => ({
       role: m.fromId === agentName ? "assistant" as const : "user" as const,
@@ -115,34 +221,26 @@ export class AutoReplyService {
       messages.unshift({ role: "user", content: `[Topic: ${context.topic}]` });
     }
 
-    try {
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
-          model,
-          max_tokens: 2048,
-          system: systemPrompt,
-          messages: messages.length > 0 ? messages : [{ role: "user", content: "Start the discussion." }],
-        }),
-      });
+    // Try each backend in order (primary → fallback)
+    for (const backend of backends) {
+      try {
+        console.log(`[auto-reply] Trying ${backend.provider} (${backend.model}) for ${agentName}`);
 
-      if (!res.ok) {
-        const err = await res.text();
-        console.error(`[auto-reply] LLM ${res.status}: ${err}`);
-        return "";
+        const text = backend.provider === "anthropic"
+          ? await this.callAnthropic(backend, systemPrompt, messages)
+          : await this.callOpenAICompatible(backend, systemPrompt, messages);
+
+        if (text?.trim()) {
+          return text;
+        }
+      } catch (err: any) {
+        console.error(`[auto-reply] ${backend.provider} failed: ${err.message}`);
+        // Continue to fallback
       }
-
-      const data = await res.json() as any;
-      return data.content?.[0]?.text ?? data.choices?.[0]?.message?.content ?? "";
-    } catch (err: any) {
-      console.error(`[auto-reply] LLM error:`, err.message);
-      return "";
     }
+
+    console.error(`[auto-reply] All LLM backends failed for ${agentName}`);
+    return "";
   }
 
   async executeAutoReply(agentId: string, sessionId: string, triggerInteraction: Interaction): Promise<void> {
