@@ -6,6 +6,8 @@ export const owners = sqliteTable("owners", {
   ownerId: text("owner_id").primaryKey(),
   name: text("name").notNull(),
   apiKey: text("api_key").notNull().unique(),
+  username: text("username").unique(),
+  passwordHash: text("password_hash"),
   createdAt: text("created_at")
     .notNull()
     .default(sql`(datetime('now'))`),

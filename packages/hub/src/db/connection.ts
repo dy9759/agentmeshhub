@@ -24,6 +24,8 @@ export function initializeDatabase(db: DB): void {
       owner_id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       api_key TEXT NOT NULL UNIQUE,
+      username TEXT UNIQUE,
+      password_hash TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
@@ -192,6 +194,8 @@ export function initializeDatabase(db: DB): void {
     "ALTER TABLE agents ADD COLUMN bio TEXT",
     "ALTER TABLE agents ADD COLUMN tags TEXT",
     "ALTER TABLE agents ADD COLUMN agent_metadata TEXT",
+    "ALTER TABLE owners ADD COLUMN username TEXT UNIQUE",
+    "ALTER TABLE owners ADD COLUMN password_hash TEXT",
   ];
   for (const migration of migrations) {
     try { db.run(sql.raw(migration)); } catch { /* column already exists */ }

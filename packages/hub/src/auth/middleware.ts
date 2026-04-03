@@ -31,7 +31,7 @@ export function createAuthMiddleware(apiKeyStore: ApiKeyStore) {
     if (isPublicPath(request.url)) return;
 
     // Allow POST /api/owners without auth
-    if (request.url === "/api/owners" && request.method === "POST") return;
+    if (request.method === "POST" && (request.url === "/api/owners" || request.url === "/api/owners/login")) return;
 
     const authHeader = request.headers.authorization;
     if (!authHeader?.startsWith("Bearer ")) {
