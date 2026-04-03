@@ -41,6 +41,10 @@ export const InteractionTypeSchema = z.enum([
   "query",
   "event",
   "broadcast",
+  "session_invite",
+  "session_complete",
+  "plan_request",
+  "plan_response",
 ]);
 
 export const ContentTypeSchema = z.enum(["text", "json", "action"]);

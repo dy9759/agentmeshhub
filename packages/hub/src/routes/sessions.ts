@@ -108,6 +108,28 @@ export function sessionRoutes(
     return session;
   });
 
+  // Summarize session
+  app.get("/api/sessions/:id/summary", async (request, reply) => {
+    const auth = getAuth(request);
+    const { id } = request.params as { id: string };
+
+    try {
+      const summary = await sessionService.summarize(id);
+      const session = summary.session;
+      if (!canAccessSession(auth, session)) {
+        reply.code(403).send({ error: "Forbidden" });
+        return;
+      }
+      return summary;
+    } catch (err: any) {
+      if (err.statusCode === 404) {
+        reply.code(404).send({ error: err.message });
+        return;
+      }
+      throw err;
+    }
+  });
+
   // List sessions
   app.get("/api/sessions", async (request) => {
     const auth = getAuth(request);

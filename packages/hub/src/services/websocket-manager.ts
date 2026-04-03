@@ -1,5 +1,5 @@
 import type { WebSocket } from "ws";
-import type { Interaction, WSMessage } from "@agentmesh/shared";
+import type { Interaction, WSMessage, WSSessionUpdatePayload, WSTypingPayload, WSPresencePayload } from "@agentmesh/shared";
 import { BoundedUUIDSet } from "../utils/bounded-uuid-set.js";
 
 interface AgentConnection {
@@ -57,6 +57,20 @@ export class WebSocketManager {
     }
   }
 
+  /** Send any WSMessage to a connected agent */
+  pushMessage(agentId: string, msg: WSMessage): boolean {
+    const conn = this.connections.get(agentId);
+    if (!conn || conn.socket.readyState !== 1) {
+      return false;
+    }
+    try {
+      conn.socket.send(JSON.stringify(msg));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   pushToAgent(agentId: string, interaction: Interaction): boolean {
     const conn = this.connections.get(agentId);
     if (!conn || conn.socket.readyState !== 1) {
@@ -74,12 +88,7 @@ export class WebSocketManager {
       id: interaction.id,
     };
 
-    try {
-      conn.socket.send(JSON.stringify(msg));
-      return true;
-    } catch {
-      return false;
-    }
+    return this.pushMessage(agentId, msg);
   }
 
   pushToAgents(
@@ -132,6 +141,27 @@ export class WebSocketManager {
     const conn = this.connections.get(agentId);
     if (conn) {
       conn.lastPong = Date.now();
+    }
+  }
+
+  pushSessionUpdate(participantIds: string[], payload: WSSessionUpdatePayload): void {
+    const msg: WSMessage = { type: "session_update", payload };
+    for (const id of participantIds) {
+      this.pushMessage(id, msg);
+    }
+  }
+
+  pushTyping(targetAgentId: string, payload: WSTypingPayload): void {
+    const msg: WSMessage = { type: "typing", payload };
+    this.pushMessage(targetAgentId, msg);
+  }
+
+  pushPresence(payload: WSPresencePayload): void {
+    const msg: WSMessage = { type: "presence", payload };
+    for (const [, conn] of this.connections) {
+      if (conn.socket.readyState === 1) {
+        try { conn.socket.send(JSON.stringify(msg)); } catch { /* ignore */ }
+      }
     }
   }
 

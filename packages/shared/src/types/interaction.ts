@@ -3,7 +3,11 @@ export type InteractionType =
   | "task"
   | "query"
   | "event"
-  | "broadcast";
+  | "broadcast"
+  | "session_invite"
+  | "session_complete"
+  | "plan_request"
+  | "plan_response";
 
 export type ContentType = "text" | "json" | "action";
 
@@ -71,7 +75,10 @@ export type WSMessageType =
   | "pong"
   | "interaction"
   | "ack"
-  | "error";
+  | "error"
+  | "session_update"
+  | "typing"
+  | "presence";
 
 export interface WSMessage {
   type: WSMessageType;
@@ -86,4 +93,24 @@ export interface WSHelloPayload {
 
 export interface WSInteractionPayload {
   interaction: Interaction;
+}
+
+export interface WSSessionUpdatePayload {
+  sessionId: string;
+  status: string;
+  currentTurn: number;
+  maxTurns: number;
+  updatedBy: string;
+}
+
+export interface WSTypingPayload {
+  fromId: string;
+  fromType: "agent" | "owner";
+  sessionId?: string;
+  isTyping: boolean;
+}
+
+export interface WSPresencePayload {
+  agentId: string;
+  status: "online" | "offline" | "busy";
 }

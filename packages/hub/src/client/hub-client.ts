@@ -20,6 +20,7 @@ import type {
   CreateOwnerResponse,
   WSMessage,
   WSInteractionPayload,
+  WSSessionUpdatePayload,
 } from "@agentmesh/shared";
 import WebSocket from "ws";
 
@@ -35,6 +36,7 @@ export class HubClient {
   private ws: WebSocket | null = null;
   private wsReconnectTimer: NodeJS.Timeout | null = null;
   private wsReconnectDelay = 5000;
+  private pingInterval: NodeJS.Timeout | null = null;
   private interactionCallbacks: Array<(interaction: Interaction) => void> = [];
   private wsConnected = false;
 
@@ -65,6 +67,13 @@ export class HubClient {
           type: "hello",
           payload: { agentId, agentToken: this.token },
         }));
+
+        // Client-side ping every 30s
+        this.pingInterval = setInterval(() => {
+          if (this.ws?.readyState === 1) {
+            this.ws.send(JSON.stringify({ type: "ping" }));
+          }
+        }, 30000);
       });
 
       this.ws.on("message", (data) => {
@@ -109,6 +118,22 @@ export class HubClient {
       case "ping":
         this.ws?.send(JSON.stringify({ type: "pong" }));
         break;
+      case "session_update": {
+        const payload = msg.payload as WSSessionUpdatePayload;
+        if (payload) {
+          for (const cb of this.interactionCallbacks) {
+            try { cb({ type: "session_update", ...payload } as any); } catch { /* ignore */ }
+          }
+        }
+        break;
+      }
+      case "typing":
+      case "presence":
+        // Forward to callbacks for UI handling
+        for (const cb of this.interactionCallbacks) {
+          try { cb({ type: msg.type, ...(msg.payload as Record<string, unknown>) } as any); } catch { /* ignore */ }
+        }
+        break;
       case "error":
         console.error("[hub-client] WS error:", msg.payload);
         break;
@@ -134,6 +159,10 @@ export class HubClient {
   }
 
   disconnectWebSocket(): void {
+    if (this.pingInterval) {
+      clearInterval(this.pingInterval);
+      this.pingInterval = null;
+    }
     if (this.wsReconnectTimer) {
       clearTimeout(this.wsReconnectTimer);
       this.wsReconnectTimer = null;

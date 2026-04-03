@@ -11,6 +11,7 @@ import {
   type SenderType,
 } from "@agentmesh/shared";
 import type { DB } from "../db/connection.js";
+import type { WebSocketManager } from "./websocket-manager.js";
 import { sessions, interactions, agents, owners } from "../db/schema.js";
 
 function safeJsonParse<T>(str: string | null, fallback: T): T {
@@ -59,7 +60,13 @@ function rowToInteraction(row: typeof interactions.$inferSelect): Interaction {
 }
 
 export class SessionService {
+  private wsManager?: WebSocketManager;
+
   constructor(private db: DB) {}
+
+  setWebSocketManager(wsManager: WebSocketManager): void {
+    this.wsManager = wsManager;
+  }
 
   async create(
     creatorId: string,
@@ -130,6 +137,18 @@ export class SessionService {
 
     const session = await this.findById(sessionId);
     if (!session) throw new AppError("Session not found", 404);
+
+    if (this.wsManager) {
+      const participantIds = session.participants.map((p) => p.id);
+      this.wsManager.pushSessionUpdate(participantIds, {
+        sessionId,
+        status: session.status,
+        currentTurn: session.currentTurn,
+        maxTurns: session.maxTurns,
+        updatedBy: "system",
+      });
+    }
+
     return session;
   }
 
@@ -152,6 +171,17 @@ export class SessionService {
     if (session.currentTurn >= session.maxTurns) {
       await this.updateStatus(sessionId, "completed");
       return (await this.findById(sessionId))!;
+    }
+
+    if (this.wsManager) {
+      const participantIds = session.participants.map((p) => p.id);
+      this.wsManager.pushSessionUpdate(participantIds, {
+        sessionId,
+        status: session.status,
+        currentTurn: session.currentTurn,
+        maxTurns: session.maxTurns,
+        updatedBy: "system",
+      });
     }
 
     return session;
@@ -223,6 +253,44 @@ export class SessionService {
       .all();
 
     return rows.map(rowToInteraction);
+  }
+
+  async summarize(sessionId: string): Promise<{
+    session: Session;
+    messageCount: number;
+    participants: Array<{ id: string; messageCount: number }>;
+    timeline: Array<{ turn: number; fromId: string; preview: string; createdAt: string }>;
+  }> {
+    const session = await this.findById(sessionId);
+    if (!session) throw new AppError("Session not found", 404);
+
+    const messages = await this.getMessages(sessionId);
+
+    // Count messages per participant
+    const participantCounts = new Map<string, number>();
+    for (const msg of messages) {
+      const from = msg.fromId;
+      participantCounts.set(from, (participantCounts.get(from) ?? 0) + 1);
+    }
+
+    const participants = Array.from(participantCounts.entries()).map(([id, count]) => ({
+      id,
+      messageCount: count,
+    }));
+
+    const timeline = messages.map((msg, i) => ({
+      turn: i + 1,
+      fromId: msg.fromId,
+      preview: (msg.payload.text ?? JSON.stringify(msg.payload.data) ?? "").slice(0, 100),
+      createdAt: msg.createdAt,
+    }));
+
+    return {
+      session,
+      messageCount: messages.length,
+      participants,
+      timeline,
+    };
   }
 
   async list(opts?: {

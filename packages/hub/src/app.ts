@@ -24,6 +24,7 @@ import multipart from "@fastify/multipart";
 import websocket from "@fastify/websocket";
 import { WebSocketManager } from "./services/websocket-manager.js";
 import { websocketRoutes } from "./routes/websocket.js";
+import { getAuth } from "./auth/middleware.js";
 import { join } from "node:path";
 
 export interface AppConfig {
@@ -72,6 +73,7 @@ export function createApp(config: AppConfig = {}) {
 
   // Session service
   const sessionService = new SessionService(db);
+  sessionService.setWebSocketManager(wsManager);
   messageBusService.setSessionService(sessionService);
 
   // Middleware
@@ -119,6 +121,23 @@ export function createApp(config: AppConfig = {}) {
   fileRoutes(app, fileService);
   sessionRoutes(app, sessionService, messageBusService);
   websocketRoutes(app, wsManager);
+
+  // Typing indicator (lightweight, no DB persistence)
+  app.post("/api/typing", async (request, reply) => {
+    const auth = getAuth(request);
+    const body = request.body as { targetAgentId: string; sessionId?: string; isTyping: boolean };
+    const fromId = auth.agentId ?? auth.ownerId;
+    const fromType: "agent" | "owner" = auth.agentId ? "agent" : "owner";
+    if (fromId && body.targetAgentId) {
+      wsManager.pushTyping(body.targetAgentId, {
+        fromId,
+        fromType,
+        sessionId: body.sessionId,
+        isTyping: body.isTyping ?? true,
+      });
+    }
+    reply.code(204).send();
+  });
 
   // Background tasks
   const reaper = startStaleAgentReaper(registryService);
