@@ -147,7 +147,36 @@ export function initializeDatabase(db: DB): void {
     )
   `);
 
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS teams (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      leader_id TEXT NOT NULL,
+      leader_type TEXT NOT NULL,
+      members TEXT NOT NULL DEFAULT '[]',
+      description TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS remote_sessions (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      owner_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'created',
+      title TEXT,
+      environment TEXT,
+      events TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+
   // Indexes for common queries
+  db.run(sql`CREATE INDEX IF NOT EXISTS idx_remote_sessions_agent ON remote_sessions(agent_id)`);
+  db.run(sql`CREATE INDEX IF NOT EXISTS idx_teams_leader ON teams(leader_id)`);
   db.run(sql`CREATE INDEX IF NOT EXISTS idx_agents_owner ON agents(owner_id)`);
   db.run(sql`CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status)`);
   db.run(sql`CREATE INDEX IF NOT EXISTS idx_interactions_to ON interactions(to_agent, status)`);

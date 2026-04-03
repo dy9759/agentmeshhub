@@ -17,6 +17,10 @@ import { FileService } from "./services/file.service.js";
 import { fileRoutes } from "./routes/files.js";
 import { SessionService } from "./services/session.service.js";
 import { sessionRoutes } from "./routes/sessions.js";
+import { RemoteSessionService } from "./services/remote-session.service.js";
+import { remoteSessionRoutes } from "./routes/remote-sessions.js";
+import { TeamService } from "./services/team.service.js";
+import { teamRoutes } from "./routes/teams.js";
 import { startStaleAgentReaper } from "./tasks/stale-agent-reaper.js";
 import { startFileExpiryReaper } from "./tasks/file-expiry-reaper.js";
 import { startInteractionReaper } from "./tasks/interaction-reaper.js";
@@ -76,6 +80,12 @@ export function createApp(config: AppConfig = {}) {
   sessionService.setWebSocketManager(wsManager);
   messageBusService.setSessionService(sessionService);
 
+  // Remote session service
+  const remoteSessionService = new RemoteSessionService(db);
+
+  // Team service
+  const teamService = new TeamService(db);
+
   // Middleware
   app.register(cors);
   app.register(websocket);
@@ -121,6 +131,8 @@ export function createApp(config: AppConfig = {}) {
   fileRoutes(app, fileService);
   sessionRoutes(app, sessionService, messageBusService);
   websocketRoutes(app, wsManager);
+  remoteSessionRoutes(app, remoteSessionService);
+  teamRoutes(app, teamService, messageBusService);
 
   // Typing indicator (lightweight, no DB persistence)
   app.post("/api/typing", async (request, reply) => {
@@ -161,6 +173,8 @@ export function createApp(config: AppConfig = {}) {
       taskEngineService,
       fileService,
       sessionService,
+      remoteSessionService,
+      teamService,
     },
   };
 }

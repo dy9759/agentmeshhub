@@ -28,3 +28,11 @@ export function generateFileId(): string {
 export function generateSessionId(): string {
   return generateId("ses");
 }
+
+export function generateTeamId(): string {
+  return generateId("team");
+}
+
+export function generateRemoteSessionId(): string {
+  return generateId("rsess");
+}

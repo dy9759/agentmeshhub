@@ -136,6 +136,36 @@ export const sessions = sqliteTable("sessions", {
     .default(sql`(datetime('now'))`),
 });
 
+// Teams (team orchestration)
+export const teams = sqliteTable("teams", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  leaderId: text("leader_id").notNull(),
+  leaderType: text("leader_type").notNull(),
+  members: text("members").notNull().default("[]"), // JSON array
+  description: text("description"),
+  createdAt: text("created_at")
+    .notNull()
+    .default(sql`(datetime('now'))`),
+  updatedAt: text("updated_at")
+    .notNull()
+    .default(sql`(datetime('now'))`),
+});
+
+// Remote Sessions (teleport/remote agent tracking)
+export const remoteSessions = sqliteTable("remote_sessions", {
+  id: text("id").primaryKey(),
+  agentId: text("agent_id").notNull(),
+  ownerId: text("owner_id").notNull(),
+  status: text("status").notNull().default("created"),
+  // created | running | idle | completed | failed | archived
+  title: text("title"),
+  environment: text("environment"), // JSON: machine info
+  events: text("events").notNull().default("[]"), // JSON array of events
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+});
+
 // Tasks (collaboration model)
 export const tasks = sqliteTable("tasks", {
   id: text("id").primaryKey(),
