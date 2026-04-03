@@ -11,7 +11,12 @@ import type { DB } from "../db/connection.js";
 import { agents } from "../db/schema.js";
 import type { Registry } from "../interfaces/registry.js";
 
-function rowToAgent(row: typeof agents.$inferSelect): Agent {
+function safeJsonParse<T>(str: string | null | undefined, fallback: T): T {
+  if (!str) return fallback;
+  try { return JSON.parse(str); } catch { return fallback; }
+}
+
+function rowToAgent(row: typeof agents.$inferSelect): Agent & { profile: Record<string, unknown> } {
   const caps: string[] = JSON.parse(row.capabilities);
   return {
     agentId: row.agentId,
@@ -31,7 +36,14 @@ function rowToAgent(row: typeof agents.$inferSelect): Agent {
     },
     registeredAt: row.registeredAt,
     lastHeartbeat: row.lastHeartbeat,
-  };
+    profile: {
+      displayName: row.displayName ?? null,
+      avatar: row.avatar ?? null,
+      bio: row.bio ?? null,
+      tags: safeJsonParse(row.tags, []),
+      metadata: safeJsonParse(row.agentMetadata, {}),
+    },
+  } as Agent & { profile: Record<string, unknown> };
 }
 
 export class RegistryService implements Registry {
@@ -176,6 +188,10 @@ export class RegistryService implements Registry {
     allOnline.sort((a, b) => a.state.load - b.state.load);
 
     return opts?.limit ? allOnline.slice(0, opts.limit) : allOnline;
+  }
+
+  async updateProfile(agentId: string, updates: Record<string, unknown>): Promise<void> {
+    this.db.update(agents).set(updates).where(eq(agents.agentId, agentId)).run();
   }
 
   async markStaleOffline(thresholdSeconds: number): Promise<number> {

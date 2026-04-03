@@ -50,6 +50,11 @@ export const agents = sqliteTable("agents", {
     .notNull()
     .default(sql`(datetime('now'))`),
   autoReplyConfig: text("auto_reply_config"), // JSON: { enabled, permissions, llmEndpoint, llmApiKey, model, systemPrompt }
+  displayName: text("display_name"),     // 显示名
+  avatar: text("avatar"),                // avatar URL or emoji
+  bio: text("bio"),                      // 简介
+  tags: text("tags"),                    // JSON array of custom tags
+  agentMetadata: text("agent_metadata"), // JSON custom key-value
 });
 
 // Interactions table (unified messages)

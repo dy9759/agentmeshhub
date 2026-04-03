@@ -58,6 +58,11 @@ export function initializeDatabase(db: DB): void {
       registered_at TEXT NOT NULL DEFAULT (datetime('now')),
       last_heartbeat TEXT NOT NULL DEFAULT (datetime('now')),
       auto_reply_config TEXT,
+      display_name TEXT,
+      avatar TEXT,
+      bio TEXT,
+      tags TEXT,
+      agent_metadata TEXT,
       UNIQUE(name, machine_id, owner_id)
     )
   `);
@@ -182,6 +187,11 @@ export function initializeDatabase(db: DB): void {
     "ALTER TABLE interactions ADD COLUMN to_owner TEXT",
     "ALTER TABLE interactions ADD COLUMN from_id TEXT",
     "ALTER TABLE interactions ADD COLUMN from_type TEXT DEFAULT 'agent'",
+    "ALTER TABLE agents ADD COLUMN display_name TEXT",
+    "ALTER TABLE agents ADD COLUMN avatar TEXT",
+    "ALTER TABLE agents ADD COLUMN bio TEXT",
+    "ALTER TABLE agents ADD COLUMN tags TEXT",
+    "ALTER TABLE agents ADD COLUMN agent_metadata TEXT",
   ];
   for (const migration of migrations) {
     try { db.run(sql.raw(migration)); } catch { /* column already exists */ }

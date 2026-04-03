@@ -127,6 +127,46 @@ export function agentRoutes(app: FastifyInstance, registry: RegistryService) {
     reply.send({ agentId: id, autoReplyConfig: config });
   });
 
+  // Update agent profile
+  app.patch("/api/agents/:id/profile", async (request, reply) => {
+    const auth = getAuth(request);
+    const { id } = request.params as { id: string };
+    const agent = await registry.findById(id);
+    if (!agent) { reply.code(404).send({ error: "Agent not found" }); return; }
+    if (agent.ownerId !== auth.ownerId && auth.agentId !== id) {
+      reply.code(403).send({ error: "Not your agent" }); return;
+    }
+
+    const body = request.body as Record<string, unknown>;
+    const updates: Record<string, unknown> = {};
+    if (body.displayName !== undefined) updates.displayName = body.displayName;
+    if (body.avatar !== undefined) updates.avatar = body.avatar;
+    if (body.bio !== undefined) updates.bio = body.bio;
+    if (body.tags !== undefined) updates.tags = JSON.stringify(body.tags);
+    if (body.metadata !== undefined) updates.agentMetadata = JSON.stringify(body.metadata);
+
+    if (Object.keys(updates).length > 0) {
+      await registry.updateProfile(id, updates);
+    }
+
+    const updated = await registry.findById(id);
+    reply.send(updated);
+  });
+
+  // Get agent profile
+  app.get("/api/agents/:id/profile", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const agent = await registry.findById(id);
+    if (!agent) { reply.code(404).send({ error: "Agent not found" }); return; }
+    reply.send({
+      agentId: agent.agentId,
+      name: agent.name,
+      type: agent.type,
+      profile: (agent as any).profile ?? {},
+      state: agent.state,
+    });
+  });
+
   // Unregister
   app.delete("/api/agents/:id", async (request, reply) => {
     const { id } = request.params as { id: string };
