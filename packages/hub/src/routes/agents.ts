@@ -69,6 +69,35 @@ export function agentRoutes(app: FastifyInstance, registry: RegistryService) {
     return { agents };
   });
 
+  // Get token for owned agent (Owner switches identity)
+  app.post("/api/agents/:id/token", async (request, reply) => {
+    const auth = getAuth(request);
+    const { id } = request.params as { id: string };
+    const agent = await registry.findById(id);
+    if (!agent) {
+      reply.code(404).send({ error: "Agent not found" });
+      return;
+    }
+    if (agent.ownerId !== auth.ownerId) {
+      reply.code(403).send({ error: "Not your agent" });
+      return;
+    }
+    const { token, expiresIn } = await signAgentToken(
+      agent.agentId,
+      auth.ownerId,
+      agent.state.capabilities,
+    );
+    reply.send({ agentId: agent.agentId, agentToken: token, expiresIn });
+  });
+
+  // List my agents (owner-filtered)
+  app.get("/api/agents/mine", async (request) => {
+    const auth = getAuth(request);
+    if (!auth.ownerId) return { agents: [] };
+    const agents = await registry.find({ ownerId: auth.ownerId });
+    return { agents };
+  });
+
   // Unregister
   app.delete("/api/agents/:id", async (request, reply) => {
     const { id } = request.params as { id: string };
