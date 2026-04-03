@@ -138,7 +138,7 @@ export function createApp(config: AppConfig = {}) {
   ownerRoutes(app, ownerService);
   agentRoutes(app, registryService);
   interactionRoutes(app, messageBusService);
-  channelRoutes(app, channelService, messageBusService);
+  channelRoutes(app, channelService, messageBusService, registryService);
   taskRoutes(app, taskEngineService);
   fileRoutes(app, fileService);
   sessionRoutes(app, sessionService, messageBusService);

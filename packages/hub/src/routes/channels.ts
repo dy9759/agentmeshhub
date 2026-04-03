@@ -2,12 +2,14 @@ import type { FastifyInstance } from "fastify";
 import { CreateChannelRequestSchema } from "@agentmesh/shared";
 import type { ChannelService } from "../services/channel.service.js";
 import type { MessageBusService } from "../services/message-bus.service.js";
+import type { RegistryService } from "../services/registry.service.js";
 import { getAuth } from "../auth/middleware.js";
 
 export function channelRoutes(
   app: FastifyInstance,
   channelService: ChannelService,
   messageBus: MessageBusService,
+  registry?: RegistryService,
 ) {
   // Create channel (agent or owner)
   app.post("/api/channels", async (request, reply) => {
@@ -54,5 +56,29 @@ export function channelRoutes(
       limit: query.limit ? parseInt(query.limit, 10) : undefined,
     });
     return { interactions: messages };
+  });
+
+  // Get channel members with agent details
+  app.get("/api/channels/:name/members", async (request, reply) => {
+    const { name } = request.params as { name: string };
+    const members = await channelService.getMembers(name);
+
+    if (!registry) {
+      return { members: members.map(m => ({ ...m, name: m.agentId, type: "unknown", capabilities: [], status: "unknown" })) };
+    }
+
+    const enriched = [];
+    for (const member of members) {
+      const agent = await registry.findById(member.agentId);
+      enriched.push({
+        agentId: member.agentId,
+        name: agent?.name ?? member.agentId,
+        type: agent?.type ?? "unknown",
+        capabilities: agent?.state?.capabilities ?? [],
+        status: agent?.state?.status ?? "offline",
+        joinedAt: member.joinedAt,
+      });
+    }
+    return { members: enriched };
   });
 }

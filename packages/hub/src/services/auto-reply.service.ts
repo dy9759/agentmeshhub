@@ -40,6 +40,26 @@ function safeJsonParse<T>(str: string | null, fallback: T): T {
   try { return JSON.parse(str) as T; } catch { return fallback; }
 }
 
+function shouldRespondToChannelMessage(
+  agentId: string,
+  agentName: string,
+  capabilities: string[],
+  text: string,
+): "forced" | "suggested" | "ignore" {
+  const lower = text.toLowerCase();
+  // @mention detection (forced response)
+  if (lower.includes(`@${agentName.toLowerCase()}`) || lower.includes(`@${agentId.toLowerCase()}`)) {
+    return "forced";
+  }
+  // Capability keyword matching (suggested response)
+  for (const cap of capabilities) {
+    if (cap && lower.includes(cap.toLowerCase())) {
+      return "suggested";
+    }
+  }
+  return "ignore";
+}
+
 function rowToInteraction(row: any): Interaction {
   return {
     id: row.id,
@@ -397,7 +417,13 @@ export class AutoReplyService {
     }
   }
 
-  private async pollForAgent(agentId: string, agentName: string, config: AutoReplyConfig): Promise<void> {
+  private async pollForAgent(agentId: string, _agentName: string, config: AutoReplyConfig): Promise<void> {
+    // Fetch agent name and capabilities from DB for @mention detection
+    const agentRow = this.db.select({ name: agents.name, capabilities: agents.capabilities })
+      .from(agents).where(eq(agents.agentId, agentId)).get();
+    const agentName = agentRow?.name ?? agentId;
+    const agentCaps: string[] = agentRow?.capabilities ? safeJsonParse(agentRow.capabilities, []) : [];
+
     const lastChecked = this.lastCheckedAt.get(agentId) ?? new Date(0).toISOString();
 
     // 1. Check direct messages (to this agent, after last check, not from self)
@@ -443,9 +469,10 @@ export class AutoReplyService {
     const now = new Date().toISOString();
     this.lastCheckedAt.set(agentId, now);
 
-    // Process direct messages
+    // Process direct messages (always respond — forced)
     for (const row of directMsgs) {
       const interaction = rowToInteraction(row);
+      console.log(`[auto-reply] DM from ${interaction.fromId} to ${agentName} — forced response`);
       if (interaction.target?.sessionId) {
         // Session message — use session auto-reply
         await this.executeAutoReply(agentId, interaction.target.sessionId, interaction);
@@ -455,10 +482,16 @@ export class AutoReplyService {
       }
     }
 
-    // Process channel messages (reply in channel)
+    // Process channel messages (reply in channel only if mentioned or capability match)
     for (const row of channelMsgs) {
       const interaction = rowToInteraction(row);
-      await this.executeChannelAutoReply(agentId, row._channel ?? interaction.target?.channel!, interaction);
+      const text = interaction.payload?.text ?? "";
+      const responseLevel = shouldRespondToChannelMessage(agentId, agentName, agentCaps, text);
+
+      if (responseLevel === "forced" || responseLevel === "suggested") {
+        await this.executeChannelAutoReply(agentId, row._channel ?? interaction.target?.channel!, interaction);
+      }
+      // else: ignore — don't respond to unrelated channel messages
     }
 
     // Process missed session messages
