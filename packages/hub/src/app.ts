@@ -84,11 +84,15 @@ export function createApp(config: AppConfig = {}) {
   // Remote session service
   const remoteSessionService = new RemoteSessionService(db);
 
-  // Auto-reply service
+  // Auto-reply service (5-second poll daemon, default ON)
   const autoReplyService = new AutoReplyService(db);
   autoReplyService.setMessageBus(messageBusService);
   autoReplyService.setSessionService(sessionService);
   messageBusService.setAutoReplyService(autoReplyService);
+  // Start poll daemon by default (disable via AUTO_REPLY_POLL=false env)
+  if (process.env.AUTO_REPLY_POLL !== "false") {
+    autoReplyService.startPollDaemon();
+  }
 
   // Team service
   const teamService = new TeamService(db);
@@ -145,6 +149,19 @@ export function createApp(config: AppConfig = {}) {
   // Expose autoReplyService to routes (avoiding parameter changes)
   (app as any).__autoReplyService = autoReplyService;
 
+  // Auto-reply poll daemon control
+  app.post("/api/auto-reply/start", async (_request, reply) => {
+    autoReplyService.startPollDaemon();
+    reply.send({ polling: true, message: "Auto-reply poll daemon started (5s interval)" });
+  });
+  app.post("/api/auto-reply/stop", async (_request, reply) => {
+    autoReplyService.stopPollDaemon();
+    reply.send({ polling: false, message: "Auto-reply poll daemon stopped" });
+  });
+  app.get("/api/auto-reply/status", async (_request, reply) => {
+    reply.send({ polling: autoReplyService["pollTimer"] !== null });
+  });
+
   // Typing indicator (lightweight, no DB persistence)
   app.post("/api/typing", async (request, reply) => {
     const auth = getAuth(request);
@@ -170,6 +187,7 @@ export function createApp(config: AppConfig = {}) {
     clearInterval(reaper);
     clearInterval(fileReaper);
     clearInterval(interactionReaper);
+    autoReplyService.destroy();
     wsManager.destroy();
   });
 
