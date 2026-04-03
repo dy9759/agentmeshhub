@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { FileService } from "../services/file.service.js";
 import { getAuth } from "../auth/middleware.js";
-import { createReadStream } from "node:fs";
+import { readFileSync } from "node:fs";
 
 export function fileRoutes(app: FastifyInstance, fileService: FileService) {
   // Upload file (multipart)
@@ -52,10 +52,12 @@ export function fileRoutes(app: FastifyInstance, fileService: FileService) {
       return;
     }
 
+    const fileBuffer = readFileSync(result.filePath);
     reply
       .header("Content-Type", result.contentType)
       .header("Content-Disposition", `attachment; filename="${result.fileName}"`)
-      .send(createReadStream(result.filePath));
+      .header("Content-Length", fileBuffer.length)
+      .send(fileBuffer);
   });
 
   // Get file metadata
