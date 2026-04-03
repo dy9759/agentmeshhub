@@ -167,6 +167,35 @@ export function agentRoutes(app: FastifyInstance, registry: RegistryService) {
     });
   });
 
+  // Refresh agent token (extend expiration)
+  app.post("/api/agents/:id/refresh-token", async (request, reply) => {
+    const auth = getAuth(request);
+    const { id } = request.params as { id: string };
+
+    // Allow both owner and agent to refresh
+    if (auth.agentId !== id && auth.ownerId) {
+      const agent = await registry.findById(id);
+      if (!agent || agent.ownerId !== auth.ownerId) {
+        reply.code(403).send({ error: "Not your agent" });
+        return;
+      }
+    } else if (!auth.agentId) {
+      reply.code(401).send({ error: "Auth required" });
+      return;
+    }
+
+    const agent = await registry.findById(id);
+    if (!agent) { reply.code(404).send({ error: "Agent not found" }); return; }
+
+    const { token, expiresIn } = await signAgentToken(
+      agent.agentId,
+      agent.ownerId,
+      agent.state.capabilities,
+    );
+
+    reply.send({ agentId: agent.agentId, agentToken: token, expiresIn });
+  });
+
   // Unregister
   app.delete("/api/agents/:id", async (request, reply) => {
     const { id } = request.params as { id: string };

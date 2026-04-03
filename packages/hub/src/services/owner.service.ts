@@ -29,6 +29,12 @@ export class OwnerService implements ApiKeyStore {
     return result ?? null;
   }
 
+  async rotateApiKey(ownerId: string): Promise<{ ownerId: string; apiKey: string }> {
+    const newKey = `amk_${randomBytes(24).toString("hex")}`;
+    this.db.update(owners).set({ apiKey: newKey }).where(eq(owners.ownerId, ownerId)).run();
+    return { ownerId, apiKey: newKey };
+  }
+
   async findById(ownerId: string): Promise<{ ownerId: string; name: string } | null> {
     const result = this.db
       .select({ ownerId: owners.ownerId, name: owners.name })

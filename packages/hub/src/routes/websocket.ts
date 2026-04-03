@@ -16,6 +16,7 @@ export function websocketRoutes(
       let authenticated = false;
       let agentId: string | null = null;
       let ownerId: string | null = null;
+      let authAttempts = 0;
 
       // Set hello timeout
       const helloTimeout = setTimeout(() => {
@@ -78,8 +79,13 @@ export function websocketRoutes(
           }
 
           // Neither worked
+          authAttempts++;
+          if (authAttempts >= 3) {
+            socket.send(JSON.stringify({ type: "error", payload: { message: "Too many failed auth attempts" } }));
+            socket.close(4003, "Too many failed auth attempts");
+            return;
+          }
           socket.send(JSON.stringify({ type: "error", payload: { message: "Authentication failed" } }));
-          socket.close(4004, "Authentication failed");
           return;
         }
 

@@ -2,6 +2,7 @@ import type { FastifyRequest, FastifyReply } from "fastify";
 import type { AuthContext } from "./types.js";
 import { verifyAgentToken } from "./agent-token.js";
 import type { ApiKeyStore } from "./api-key.js";
+import { safeCompare } from "./api-key.js";
 
 /**
  * Fastify authentication middleware
@@ -44,31 +45,43 @@ export function createAuthMiddleware(apiKeyStore: ApiKeyStore) {
     // Layer 1: Try Agent Token (JWT)
     const agentPayload = await verifyAgentToken(token);
     if (agentPayload) {
-      (request as FastifyRequest & { auth: AuthContext }).auth = {
+      const auth: AuthContext = {
         type: "agent",
         ownerId: agentPayload.ownerId,
         agentId: agentPayload.sub,
       };
+      (request as FastifyRequest & { auth: AuthContext }).auth = auth;
+      if (request.url !== "/health") {
+        request.log.info({ method: request.method, url: request.url, authType: auth.type, ownerId: auth.ownerId, agentId: auth.agentId }, "AUTH OK");
+      }
       return;
     }
 
     // Layer 2: Try Owner API Key
     const owner = await apiKeyStore.findOwnerByApiKey(token);
     if (owner) {
-      (request as FastifyRequest & { auth: AuthContext }).auth = {
+      const auth: AuthContext = {
         type: "owner",
         ownerId: owner.ownerId,
       };
+      (request as FastifyRequest & { auth: AuthContext }).auth = auth;
+      if (request.url !== "/health") {
+        request.log.info({ method: request.method, url: request.url, authType: auth.type, ownerId: auth.ownerId }, "AUTH OK");
+      }
       return;
     }
 
     // Layer 3: Static API Key from env (dev fallback)
     const staticKey = process.env.AGENTMESH_API_KEY;
-    if (staticKey && token === staticKey) {
-      (request as FastifyRequest & { auth: AuthContext }).auth = {
+    if (staticKey && safeCompare(token, staticKey)) {
+      const auth: AuthContext = {
         type: "owner",
         ownerId: "static-owner",
       };
+      (request as FastifyRequest & { auth: AuthContext }).auth = auth;
+      if (request.url !== "/health") {
+        request.log.info({ method: request.method, url: request.url, authType: auth.type, ownerId: auth.ownerId }, "AUTH OK");
+      }
       return;
     }
 

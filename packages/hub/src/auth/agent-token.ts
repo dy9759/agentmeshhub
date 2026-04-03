@@ -19,6 +19,7 @@ function getSecret(): Uint8Array {
     if (envSecret) {
       secret = new TextEncoder().encode(envSecret);
     } else {
+      console.warn("[AUTH WARNING] AGENTMESH_JWT_SECRET not set — using random secret. All agent JWTs will be invalidated on server restart!");
       // Generate a random secret for dev mode (non-persistent)
       secret = crypto.getRandomValues(new Uint8Array(32));
     }
