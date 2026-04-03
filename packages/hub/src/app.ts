@@ -87,7 +87,8 @@ export function createApp(config: AppConfig = {}) {
   const teamService = new TeamService(db);
 
   // Middleware
-  app.register(cors);
+  const webOrigin = process.env.WEB_UI_ORIGIN ?? "*";
+  app.register(cors, { origin: webOrigin, credentials: true });
   app.register(websocket);
   app.register(multipart, { limits: { fileSize: 100 * 1024 * 1024 } }); // 100MB
   app.addHook("onRequest", createAuthMiddleware(ownerService));
@@ -130,7 +131,7 @@ export function createApp(config: AppConfig = {}) {
   taskRoutes(app, taskEngineService);
   fileRoutes(app, fileService);
   sessionRoutes(app, sessionService, messageBusService);
-  websocketRoutes(app, wsManager);
+  websocketRoutes(app, wsManager, ownerService);
   remoteSessionRoutes(app, remoteSessionService);
   teamRoutes(app, teamService, messageBusService);
 

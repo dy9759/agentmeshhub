@@ -19,7 +19,11 @@ export function remoteSessionRoutes(app: FastifyInstance, service: RemoteSession
   });
 
   app.patch("/api/remote-sessions/:id/status", async (request, reply) => {
+    const auth = getAuth(request);
     const { id } = request.params as { id: string };
+    const session = await service.findById(id);
+    if (!session) { reply.code(404).send({ error: "Not found" }); return; }
+    if (auth.ownerId !== session.ownerId) { reply.code(403).send({ error: "Only session owner can update status" }); return; }
     const body = request.body as { status: string };
     try {
       const session = await service.updateStatus(id, body.status);
@@ -31,7 +35,14 @@ export function remoteSessionRoutes(app: FastifyInstance, service: RemoteSession
   });
 
   app.post("/api/remote-sessions/:id/events", async (request, reply) => {
+    const auth = getAuth(request);
     const { id } = request.params as { id: string };
+    const session = await service.findById(id);
+    if (!session) { reply.code(404).send({ error: "Not found" }); return; }
+    const callerId = auth.agentId ?? auth.ownerId;
+    if (callerId !== session.ownerId && callerId !== session.agentId) {
+      reply.code(403).send({ error: "Only session owner or agent can add events" }); return;
+    }
     const body = request.body as { type: string; data?: unknown };
     try {
       const session = await service.addEvent(id, body.type, body.data);

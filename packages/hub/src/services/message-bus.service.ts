@@ -152,6 +152,14 @@ export class MessageBusService implements MessageBus {
       this.wsManager.pushToAgent(request.target.agentId, interaction);
     }
 
+    // Try WebSocket push for DM to owner
+    if (this.wsManager && request.target.ownerId) {
+      this.wsManager.pushToOwner(request.target.ownerId, {
+        type: "interaction",
+        payload: { interaction },
+      });
+    }
+
     // Auto-increment session turn
     if (request.target.sessionId && this.sessionService) {
       try {
@@ -354,6 +362,14 @@ export class MessageBusService implements MessageBus {
     const nextCursor = result.length > 0 ? result[result.length - 1].id : undefined;
 
     return { interactions: result, nextCursor };
+  }
+
+  markAsRead(interactionId: string): void {
+    this.db
+      .update(interactions)
+      .set({ status: "read" })
+      .where(eq(interactions.id, interactionId))
+      .run();
   }
 
   /**

@@ -87,8 +87,10 @@ export interface WSMessage {
 }
 
 export interface WSHelloPayload {
-  agentId: string;
-  agentToken: string;
+  agentId?: string;
+  agentToken?: string;
+  ownerId?: string;
+  ownerApiKey?: string;
 }
 
 export interface WSInteractionPayload {

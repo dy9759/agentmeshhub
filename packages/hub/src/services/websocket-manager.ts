@@ -15,6 +15,7 @@ const PONG_TIMEOUT_MS = 10_000;
 
 export class WebSocketManager {
   private connections = new Map<string, AgentConnection>();
+  private ownerConnections = new Map<string, { ws: WebSocket; recentPushes: BoundedUUIDSet }>();
   private pingTimer: NodeJS.Timeout | null = null;
 
   constructor() {
@@ -165,6 +166,31 @@ export class WebSocketManager {
     }
   }
 
+  registerOwner(ownerId: string, ws: WebSocket): void {
+    const existing = this.ownerConnections.get(ownerId);
+    if (existing && existing.ws !== ws) {
+      existing.ws.close();
+    }
+    this.ownerConnections.set(ownerId, { ws, recentPushes: new BoundedUUIDSet() });
+    console.log(`[ws-manager] Owner ${ownerId} connected`);
+  }
+
+  pushToOwner(ownerId: string, msg: WSMessage): boolean {
+    const conn = this.ownerConnections.get(ownerId);
+    if (!conn || conn.ws.readyState !== 1) return false;
+    try {
+      conn.ws.send(JSON.stringify(msg));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  removeOwner(ownerId: string): void {
+    this.ownerConnections.delete(ownerId);
+    console.log(`[ws-manager] Owner ${ownerId} disconnected`);
+  }
+
   destroy(): void {
     if (this.pingTimer) {
       clearInterval(this.pingTimer);
@@ -174,5 +200,9 @@ export class WebSocketManager {
       conn.socket.close(1000, "Server shutting down");
     }
     this.connections.clear();
+    for (const [, conn] of this.ownerConnections) {
+      conn.ws.close();
+    }
+    this.ownerConnections.clear();
   }
 }

@@ -89,6 +89,13 @@ export function interactionRoutes(
     return { messages };
   });
 
+  // Mark interaction as read
+  app.patch("/api/interactions/:id/read", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    messageBus.markAsRead(id);
+    reply.code(204).send();
+  });
+
   // Poll inbox
   app.get("/api/interactions", async (request) => {
     const query = request.query as Record<string, string>;

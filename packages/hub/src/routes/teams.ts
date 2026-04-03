@@ -60,17 +60,22 @@ export function teamRoutes(
     return team;
   });
 
-  // Add member
+  // Add member (leader only)
   app.post("/api/teams/:id/members", async (request, reply) => {
+    const auth = getAuth(request);
     const { id } = request.params as { id: string };
+    const team = await teamService.findById(id);
+    if (!team) { reply.code(404).send({ error: "Team not found" }); return; }
+    const callerId = auth.agentId ?? auth.ownerId;
+    if (callerId !== team.leaderId) { reply.code(403).send({ error: "Only team leader can add members" }); return; }
     const body = request.body as { memberId: string; memberType: string };
     try {
-      const team = await teamService.addMember(
+      const updated = await teamService.addMember(
         id,
         body.memberId,
         body.memberType as "agent" | "owner",
       );
-      return team;
+      return updated;
     } catch (err: any) {
       if (err.statusCode) {
         reply.code(err.statusCode).send({ error: err.message });
@@ -80,15 +85,20 @@ export function teamRoutes(
     }
   });
 
-  // Remove member
+  // Remove member (leader only)
   app.delete("/api/teams/:id/members/:memberId", async (request, reply) => {
+    const auth = getAuth(request);
     const { id, memberId } = request.params as {
       id: string;
       memberId: string;
     };
+    const team = await teamService.findById(id);
+    if (!team) { reply.code(404).send({ error: "Team not found" }); return; }
+    const callerId = auth.agentId ?? auth.ownerId;
+    if (callerId !== team.leaderId) { reply.code(403).send({ error: "Only team leader can remove members" }); return; }
     try {
-      const team = await teamService.removeMember(id, memberId);
-      return team;
+      const updated = await teamService.removeMember(id, memberId);
+      return updated;
     } catch (err: any) {
       if (err.statusCode) {
         reply.code(err.statusCode).send({ error: err.message });
@@ -98,14 +108,19 @@ export function teamRoutes(
     }
   });
 
-  // Delete team
+  // Delete team (leader only)
   app.delete("/api/teams/:id", async (request, reply) => {
+    const auth = getAuth(request);
     const { id } = request.params as { id: string };
+    const team = await teamService.findById(id);
+    if (!team) { reply.code(404).send({ error: "Team not found" }); return; }
+    const callerId = auth.agentId ?? auth.ownerId;
+    if (callerId !== team.leaderId) { reply.code(403).send({ error: "Only team leader can delete team" }); return; }
     await teamService.delete(id);
     reply.code(204).send();
   });
 
-  // Broadcast to team
+  // Broadcast to team (members only)
   app.post("/api/teams/:id/broadcast", async (request, reply) => {
     const auth = getAuth(request);
     const { id } = request.params as { id: string };
@@ -120,6 +135,12 @@ export function teamRoutes(
     const team = await teamService.findById(id);
     if (!team) {
       reply.code(404).send({ error: "Team not found" });
+      return;
+    }
+
+    const isMember = team.members.some((m: { id: string }) => m.id === fromId);
+    if (!isMember) {
+      reply.code(403).send({ error: "Only team members can broadcast" });
       return;
     }
 
