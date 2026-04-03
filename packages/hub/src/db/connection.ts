@@ -86,7 +86,7 @@ export function initializeDatabase(db: DB): void {
     CREATE TABLE IF NOT EXISTS channels (
       name TEXT PRIMARY KEY,
       description TEXT,
-      created_by TEXT NOT NULL REFERENCES agents(agent_id),
+      created_by TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
@@ -94,7 +94,7 @@ export function initializeDatabase(db: DB): void {
   db.run(sql`
     CREATE TABLE IF NOT EXISTS channel_members (
       channel TEXT NOT NULL REFERENCES channels(name),
-      agent_id TEXT NOT NULL REFERENCES agents(agent_id),
+      agent_id TEXT NOT NULL,
       joined_at TEXT NOT NULL DEFAULT (datetime('now')),
       PRIMARY KEY (channel, agent_id)
     )

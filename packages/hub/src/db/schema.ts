@@ -77,9 +77,7 @@ export const interactions = sqliteTable("interactions", {
 export const channels = sqliteTable("channels", {
   name: text("name").primaryKey(),
   description: text("description"),
-  createdBy: text("created_by")
-    .notNull()
-    .references(() => agents.agentId),
+  createdBy: text("created_by").notNull(), // agentId or ownerId
   createdAt: text("created_at")
     .notNull()
     .default(sql`(datetime('now'))`),
@@ -90,9 +88,7 @@ export const channelMembers = sqliteTable("channel_members", {
   channel: text("channel")
     .notNull()
     .references(() => channels.name),
-  agentId: text("agent_id")
-    .notNull()
-    .references(() => agents.agentId),
+  agentId: text("agent_id").notNull(), // agentId or ownerId (renamed kept for compat)
   joinedAt: text("joined_at")
     .notNull()
     .default(sql`(datetime('now'))`),
