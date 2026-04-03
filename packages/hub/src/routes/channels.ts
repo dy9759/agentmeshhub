@@ -9,17 +9,18 @@ export function channelRoutes(
   channelService: ChannelService,
   messageBus: MessageBusService,
 ) {
-  // Create channel
+  // Create channel (agent or owner)
   app.post("/api/channels", async (request, reply) => {
     const auth = getAuth(request);
-    if (!auth.agentId) {
-      reply.code(400).send({ error: "Agent token required" });
+    const createdBy = auth.agentId ?? auth.ownerId;
+    if (!createdBy) {
+      reply.code(400).send({ error: "Authentication required" });
       return;
     }
     const body = CreateChannelRequestSchema.parse(request.body);
     const channel = await channelService.create(
       body.name,
-      auth.agentId,
+      createdBy,
       body.description,
     );
     reply.code(201).send(channel);
@@ -31,15 +32,16 @@ export function channelRoutes(
     return { channels };
   });
 
-  // Join channel
+  // Join channel (agent or owner)
   app.post("/api/channels/:name/join", async (request, reply) => {
     const auth = getAuth(request);
-    if (!auth.agentId) {
-      reply.code(400).send({ error: "Agent token required" });
+    const memberId = auth.agentId ?? auth.ownerId;
+    if (!memberId) {
+      reply.code(400).send({ error: "Authentication required" });
       return;
     }
     const { name } = request.params as { name: string };
-    await channelService.join(name, auth.agentId);
+    await channelService.join(name, memberId);
     reply.code(204).send();
   });
 
